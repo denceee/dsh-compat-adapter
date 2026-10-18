@@ -17,7 +17,7 @@
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3DA639?style=flat-square" alt="License: MIT"></a>
-  <a href="#验证"><img src="https://img.shields.io/badge/tests-136%20passing-3DA639?style=flat-square" alt="136 tests passing"></a>
+  <a href="#验证"><img src="https://img.shields.io/badge/tests-141%20passing-3DA639?style=flat-square" alt="141 tests passing"></a>
   <img src="https://img.shields.io/badge/DSH-0.2.0--rc.2-4D6BFE?style=flat-square" alt="DSH 0.2.0-rc.2">
   <img src="https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-339933?style=flat-square" alt="Node ^22.19 || >=24">
   <img src="https://img.shields.io/badge/vendors-5-8957E5?style=flat-square" alt="5 vendors">
@@ -583,13 +583,13 @@ These are REAL interceptions: the hook decision reaches DSH. Vendors with an off
 
 ```bash
 npm run check-surface     # 逐项断言已安装 DSH 的 seam / 导出 / 事件 / 服务
-npm test                  # 136 个用例：单测 + 真实 Harness 冒烟
+npm test                  # 141 个用例：单测 + 真实 Harness 冒烟
 npm run verify            # 两者一起
 npm run verify:live       # 真实 profile 启动的端到端验证
 npm run verify:installed  # 确认"已装好的"插件真的生效
 ```
 
-`npm test` 全部通过（136/136），无第三方测试依赖（`node:test`）。
+`npm test` 全部通过（141/141），无第三方测试依赖（`node:test`）。
 
 ### 测试结构
 
@@ -609,6 +609,7 @@ npm run verify:installed  # 确认"已装好的"插件真的生效
 | `test/smoke-precise.test.js` | 精确 seam 端到端：`fs.watch` 真实文件监听、`settings/document-updated`、`session/event` 分派不再与 `todo/write` 撞车 |
 | `test/bridge-copilot.test.js` | 自建 Copilot 桥的单元契约：方言解析、顶层决策、锚定 matcher、`DIALECT_LIMITS`、`STOP_BLOCK_LIMIT=8` 失控保护 |
 | `test/integration-guide.test.js` | `INTEGRATION.md` 与真实 API 同步：文中出现的每个 API 名与错误码都真的存在，示例可执行 |
+| `test/verify-scripts.test.js` | 两个端到端验证脚本自身的不变量：持有 stdin 不被 SDK app 中途卸载、经真实 `agents.register` 驱动 `agent/created`、伪造 agent 满足 DSH 的 session 契约、等惰性消息构造落地、失败时能区分"命令没跑"与"跑了但没生效" |
 
 `test/helpers/register-dsh-resolver.js` 用 `node:module` 的 `registerHooks` 把 `@deepseek-ai/*` 解析到已安装的 DSH（`$DSH_INSTALL_DIR` → PATH 上的 `dsh` → 已知全局安装位），找不到就**报错退出**而不是跳过测试。
 
@@ -700,7 +701,7 @@ dsh-compat-adapter/
 │       ├── workbuddy.js     # 24 事件
 │       ├── opencode.js      # 29 事件
 │       └── copilot.js       # 14 事件
-├── test/                    # node:test，14 个文件，136 个用例
+├── test/                    # node:test，15 个文件，141 个用例
 ├── scripts/
 │   ├── check-surface.js     # 逐项断言 DSH 表面
 │   ├── write-matrix.js      # 从代码重写 README 矩阵块

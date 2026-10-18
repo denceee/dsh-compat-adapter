@@ -17,7 +17,7 @@
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3DA639?style=flat-square" alt="License: MIT"></a>
-  <a href="#verification"><img src="https://img.shields.io/badge/tests-136%20passing-3DA639?style=flat-square" alt="136 tests passing"></a>
+  <a href="#verification"><img src="https://img.shields.io/badge/tests-141%20passing-3DA639?style=flat-square" alt="141 tests passing"></a>
   <img src="https://img.shields.io/badge/DSH-0.2.0--rc.2-4D6BFE?style=flat-square" alt="DSH 0.2.0-rc.2">
   <img src="https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-339933?style=flat-square" alt="Node ^22.19 || >=24">
   <img src="https://img.shields.io/badge/vendors-5-8957E5?style=flat-square" alt="5 vendors">
@@ -581,13 +581,13 @@ An honest list. Every item has a corresponding row in the matrix or an assertion
 
 ```bash
 npm run check-surface     # assert every consumed DSH seam / export / event / service
-npm test                  # 136 cases: unit tests + real-Harness smoke tests
+npm test                  # 141 cases: unit tests + real-Harness smoke tests
 npm run verify            # both of the above
 npm run verify:live       # end-to-end against a really launched profile
 npm run verify:installed  # confirm an ALREADY-INSTALLED bundle is really live
 ```
 
-`npm test` passes fully (136/136) with no third-party test dependencies (`node:test`).
+`npm test` passes fully (141/141) with no third-party test dependencies (`node:test`).
 
 ### Test layout
 
@@ -607,6 +607,7 @@ npm run verify:installed  # confirm an ALREADY-INSTALLED bundle is really live
 | `test/smoke-precise.test.js` | Precise seams end-to-end: real `fs.watch` file watching, `settings/document-updated`, and `session/event` dispatch no longer colliding with `todo/write` |
 | `test/bridge-copilot.test.js` | Unit contract of the built-in Copilot bridge: dialect parsing, top-level decision, anchored matchers, `DIALECT_LIMITS`, the `STOP_BLOCK_LIMIT=8` runaway guard |
 | `test/integration-guide.test.js` | `INTEGRATION.md` stays in sync with the real API: every API name and error code it names really exists, and its examples are executable |
+| `test/verify-scripts.test.js` | Invariants of the two end-to-end scripts themselves: stdin held open so an SDK app cannot unload mid-check, `agent/created` driven through the real `agents.register`, a fake agent that satisfies DSH's session contract, the lazy message constructor awaited, and a failure that distinguishes "the command never ran" from "it ran and had no effect" |
 
 `test/helpers/register-dsh-resolver.js` uses `node:module`'s `registerHooks` to resolve `@deepseek-ai/*` to the installed DSH (`$DSH_INSTALL_DIR` → `dsh` on PATH → known global location), and **errors out** rather than skipping tests when it cannot.
 
@@ -698,7 +699,7 @@ dsh-compat-adapter/
 │       ├── workbuddy.js     # 24 events
 │       ├── opencode.js      # 29 events
 │       └── copilot.js       # 14 events
-├── test/                    # node:test, 14 files, 136 cases
+├── test/                    # node:test, 15 files, 141 cases
 ├── scripts/
 │   ├── check-surface.js     # assert the DSH surface item by item
 │   ├── write-matrix.js      # regenerate the README matrix from code
