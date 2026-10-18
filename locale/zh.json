@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "前置适配器",
+    "description": "前置/基座适配插件：把 Claude Code / Codex / WorkBuddy / OpenCode 的 hooks 与 rules 通过显式声明适配到 DSH seam，能力分级并 fail-closed。"
+  }
+}

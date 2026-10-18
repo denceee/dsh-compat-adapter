@@ -1,0 +1,50 @@
+{
+  "name": "dsh-compat-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "前置/基座适配插件：把 Claude Code / Codex / WorkBuddy / OpenCode 的 hooks 与 rules 通过显式声明适配到 DSH seam；能力分级（DIRECT/ADAPTED/CARRY/UNSUPPORTED）+ fail-closed。",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./matrix": "./src/matrix.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "check-surface": "node scripts/check-surface.js",
+    "matrix": "node scripts/write-matrix.js --print",
+    "matrix:write": "node scripts/write-matrix.js",
+    "test": "node --import ./test/helpers/register-dsh-resolver.js --test test/*.test.js",
+    "verify:live": "node scripts/verify-live.mjs",
+    "verify": "node scripts/check-surface.js && node --import ./test/helpers/register-dsh-resolver.js --test test/*.test.js && node scripts/verify-live.mjs",
+    "verify:installed": "node scripts/verify-installed.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-hook-protocol": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-hooks-claude-code": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-hooks-codex": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "~3.18.4"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "license": "MIT",
+  "files": [
+    "index.js",
+    "src/",
+    "scripts/",
+    "locale/",
+    "cordis.patch.yml",
+    "LICENSE",
+    "README.md",
+    "README.en.md"
+  ]
+}

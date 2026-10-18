@@ -1,0 +1,14 @@
+# dsh-compat-adapter bundle patch: mount the compat-adapter Host service.
+#
+# This is a PRE-ADAPTER / base plugin. It provides `ctx.compatAdapter` only; it
+# performs no adaptation by itself. Preset-class plugins declare their vendor
+# assets on their own rows (see README "Preset usage") and call
+# `ctx.compatAdapter.registerHook(...)` / `.registerRules(...)` from apply().
+#
+# `baseUrl` in a bundle patch is the PROFILE ROOT, not this file's directory.
+# A bare specifier resolves through the profile module resolution; the row is
+# therefore the bare package name, exactly like the shipped bundles. Do NOT
+# write a relative path or a `node_modules/<pkg>/`-prefixed path here.
+- insert:
+    - id: compat-adapter
+      name: 'dsh-compat-adapter'
