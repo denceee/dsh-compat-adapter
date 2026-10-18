@@ -48,8 +48,10 @@ test('package.json declares a DSH bundle patch that exists', () => {
   assert.ok(manifest.dsh?.bundle?.patch, 'dsh.bundle.patch is required for a bundle')
   const patchPath = join(ROOT, manifest.dsh.bundle.patch)
   assert.doesNotThrow(() => readFileSync(patchPath, 'utf8'))
-  assert.equal(manifest.exports['.'], './index.js')
-  assert.equal(manifest.exports['./matrix'], './src/matrix.js')
+  // Exports carry `types` alongside `default` so consumers get completion.
+  assert.equal(manifest.exports['.'].default, './index.js')
+  assert.equal(manifest.exports['.'].types, './index.d.ts')
+  assert.equal(manifest.exports['./matrix'].default, './src/matrix.js')
 })
 
 test('the bundle patch inserts exactly one host row with a bare package specifier', () => {

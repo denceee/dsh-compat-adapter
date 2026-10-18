@@ -165,8 +165,26 @@ export class CompatAdapter {
   /**
    * Declare one other-agent hook and route it to a DSH seam.
    *
+   * This is the entry point a preset-class plugin calls from its own `apply()`.
+   * It never throws for an UNPORTABLE asset (that comes back as a graded
+   * result); it throws only when the DECLARATION itself cannot be processed.
+   *
+   * @example
+   * export const inject = ['compatAdapter']
+   * export function apply(ctx) {
+   *   // fire-and-forget is fine: the result is also recorded in status()
+   *   void ctx.compatAdapter.registerHook({
+   *     vendor: 'copilot',
+   *     event: 'preToolUse',
+   *     matcher: 'bash',
+   *     handler: 'node ./hooks/deny-dangerous.cjs',
+   *   })
+   * }
+   *
    * @param {object} declaration - hook declaration.
-   * @param {string} declaration.vendor - `claude`, `codex`, `workbuddy` or `opencode` (documented aliases accepted).
+   * @param {string} declaration.vendor - one of `claude`, `codex`, `workbuddy`,
+   *   `opencode`, `copilot` (documented aliases accepted). See `matrix()` for the
+   *   exact event list each vendor accepts.
    * @param {string} declaration.event - the vendor's hook event name (e.g. `PreToolUse`).
    * @param {string} [declaration.matcher] - vendor matcher pattern.
    * @param {string|{type?: string, command?: string, timeoutSec?: number}} [declaration.handler] - command hook. A JS function handler is graded UNSUPPORTED.
@@ -235,6 +253,13 @@ export class CompatAdapter {
   /**
    * Declare other-agent rules files; they are carried verbatim and injected as
    * context at agent start. Rules never become executable policy.
+   *
+   * @example
+   * void ctx.compatAdapter.registerRules({
+   *   vendor: 'codex',
+   *   source: 'rules/*.rules',
+   *   baseDir: new URL('.', import.meta.url).pathname,
+   * })
    *
    * @param {object} declaration - rules declaration.
    * @param {string} declaration.vendor - vendor key.

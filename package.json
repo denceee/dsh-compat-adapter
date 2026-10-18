@@ -1,13 +1,19 @@
 {
   "name": "dsh-compat-adapter",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "前置/基座适配插件：把 Claude Code / Codex / WorkBuddy / OpenCode / GitHub Copilot 的 hooks 与 rules 通过显式声明适配到 DSH seam；覆盖 5 家 vendor、85 个事件，能力分级（DIRECT/ADAPTED/CARRY/UNSUPPORTED），每条适配都逐项列出损失，fail-closed。",
   "main": "./index.js",
   "exports": {
-    ".": "./index.js",
-    "./matrix": "./src/matrix.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./matrix": {
+      "types": "./index.d.ts",
+      "default": "./src/matrix.js"
+    },
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -39,12 +45,31 @@
   "license": "MIT",
   "files": [
     "index.js",
+    "index.d.ts",
     "src/",
     "scripts/",
     "locale/",
     "cordis.patch.yml",
     "LICENSE",
     "README.md",
-    "README.en.md"
+    "README.en.md",
+    "INTEGRATION.md"
+  ],
+  "types": "./index.d.ts",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "hooks",
+    "rules",
+    "adapter",
+    "claude-code",
+    "codex",
+    "workbuddy",
+    "codebuddy",
+    "opencode",
+    "github-copilot"
   ]
 }

@@ -7,6 +7,10 @@
 <p>一个 DSH 前置适配插件：<b>显式声明 → 能力分级 → 路由到真实 seam</b>。<br/>不猜、不假装修好了、不把别家运行时塞进 Host。</p>
 
 <p>
+  <a href="INTEGRATION.md"><b>🔌 我要用它</b></a> — 别的插件如何调用本适配器（消费者指南）
+</p>
+
+<p>
   <a href="README.en.md"><b>English</b></a> ·
   <b>简体中文</b>
 </p>
@@ -145,10 +149,10 @@ flowchart TB
 
 ```bash
 # 方式 A：plugin_manager 工具（受管理路径，推荐）
-#   action: install_bundle, target: github:denceee/dsh-compat-adapter
+#   action: install_bundle, target: <本仓库绝对路径>
 
 # 方式 B：CLI
-dsh plugin --profile <profile> add github:denceee/dsh-compat-adapter
+dsh plugin --profile <profile> add <本仓库绝对路径>
 ```
 
 装好后插件只做一件事：提供 `ctx.compatAdapter` 服务。**它自己不做任何适配** —— 适配由预置插件声明触发。

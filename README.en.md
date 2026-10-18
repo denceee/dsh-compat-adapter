@@ -7,6 +7,10 @@
 <p>A DSH pre-adapter plugin: <b>declare explicitly → grade capability → route to a real seam</b>.<br/>No guessing, no pretending it works, no foreign plugin runtime inside the Host.</p>
 
 <p>
+  <a href="INTEGRATION.md"><b>🔌 I want to use it</b></a> — how another plugin calls this adapter (consumer guide)
+</p>
+
+<p>
   <b>English</b> ·
   <a href="README.md"><b>简体中文</b></a>
 </p>
@@ -145,10 +149,10 @@ A standard DSH Cordis bundle (`dsh.bundle.patch` in `package.json` + `cordis.pat
 
 ```bash
 # Option A: the plugin_manager tool (managed path, recommended)
-#   action: install_bundle, target: github:denceee/dsh-compat-adapter
+#   action: install_bundle, target: <absolute path to this repo>
 
 # Option B: CLI
-dsh plugin --profile <profile> add github:denceee/dsh-compat-adapter
+dsh plugin --profile <profile> add <absolute path to this repo>
 ```
 
 Once installed the plugin does one thing: it provides the `ctx.compatAdapter` service. **It adapts nothing by itself** — adaptation is triggered by preset plugins declaring assets.
