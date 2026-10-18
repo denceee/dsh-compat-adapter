@@ -17,11 +17,11 @@
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3DA639?style=flat-square" alt="License: MIT"></a>
-  <a href="#验证"><img src="https://img.shields.io/badge/tests-126%20passing-3DA639?style=flat-square" alt="87 tests passing"></a>
+  <a href="#验证"><img src="https://img.shields.io/badge/tests-136%20passing-3DA639?style=flat-square" alt="136 tests passing"></a>
   <img src="https://img.shields.io/badge/DSH-0.2.0--rc.2-4D6BFE?style=flat-square" alt="DSH 0.2.0-rc.2">
   <img src="https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-339933?style=flat-square" alt="Node ^22.19 || >=24">
   <img src="https://img.shields.io/badge/vendors-5-8957E5?style=flat-square" alt="5 vendors">
-  <img src="https://img.shields.io/badge/hook%20events-112-0969DA?style=flat-square" alt="85 hook events">
+  <img src="https://img.shields.io/badge/hook%20events-112-0969DA?style=flat-square" alt="112 hook events">
   <img src="https://img.shields.io/badge/overclaim-none-3DA639?style=flat-square" alt="No overclaim">
 </p>
 
@@ -64,7 +64,7 @@ DSH（DeepSeek Harness）是新的 agent 运行时。而你已经在 Claude Code
 | 分级 | 含义 | 本版本情况 |
 | :--- | :--- | :--- |
 | `DIRECT` | DSH 存在 1:1 seam，语义原样保留。 | **零**。见下。 |
-| `ADAPTED` | DSH 有 seam，但存在语义损失；`degradations[]` 逐条列明。 | **全部 85 个事件** |
+| `ADAPTED` | DSH 有 seam，但存在语义损失；`degradations[]` 逐条列明。 | **全部 112 个事件** |
 | `CARRY` | 无通用映射，原文逐字节携带、会话开始注入；永不变成可执行策略。 | **全部 5 家 rules** |
 | `UNSUPPORTED` | 无忠实映射；拒绝并给出 `reason`。 | 程序性边界（见下） |
 
@@ -72,9 +72,9 @@ DSH（DeepSeek Harness）是新的 agent 运行时。而你已经在 Claude Code
 
 两个官方桥本身就是"尽力而为"的方言适配。宣称逐字节忠实，就是虚假能力。
 
-所以本插件**任何一行都不标 `DIRECT`** —— 全部 85 行都是 `ADAPTED`，每一行都必须写出自己的损失。这不是悲观，这是诚实：`test/matrix-readme.test.js` 会断言 `DIRECT.length === 0`，并断言每一行 `ADAPTED` 都至少带一条 `degradations`。
+所以本插件**任何一行都不标 `DIRECT`** —— 全部 112 行都是 `ADAPTED`，每一行都必须写出自己的损失。这不是悲观，这是诚实：`test/matrix-readme.test.js` 会断言 `DIRECT.length === 0`，并断言每一行 `ADAPTED` 都至少带一条 `degradations`。
 
-> **全覆盖不等于等价。** 85 个事件全部可执行（0 拒绝），但这是"每行都写明损失"的全覆盖，不是"全都一模一样"。
+> **全覆盖不等于等价。** 112 个事件全部可执行（0 拒绝），但这是"每行都写明损失"的全覆盖，不是"全都一模一样"。其中 **10 个事件在自己的 `degradations` 里明确写着 `Approximate`**（Claude `MessageDisplay`、`StopFailure`；Codex `Interrupt`；WorkBuddy `Elicitation`、`ElicitationResult`；OpenCode `installation.updated`、`server.connected`、`session.deleted`、`session.updated`、`tui.toast.show`），其余 **102 个为真实/精确映射**。`test/doc-counts.test.js` 会把这组数字与代码逐项比对，文档不能比代码多宣称一分能力。
 
 ### 四条硬性不变量（测试强制，不是文档承诺）
 
@@ -98,20 +98,22 @@ DSH（DeepSeek Harness）是新的 agent 运行时。而你已经在 Claude Code
 
 五家互相独立。每家是一个纯数据模块（`src/vendors/<vendor>.js`）：无 I/O、不 import DSH，所以整张矩阵脱离 Harness 也能单测。
 
-| Vendor | 别名 | 官方桥 | 事件 | 官方桥 | 原生翻译 | 只观察 | rules |
-| :--- | :--- | :--- | ---: | ---: | ---: | ---: | :---: |
-| `claude` | `claude-code`, `cc` | `dsh-hooks-claude-code` | 32 | 7 | 23 | 2 | CARRY |
-| `codex` | `openai-codex` | `dsh-hooks-codex` | 12 | 5 | 4 | 3 | CARRY |
-| `workbuddy` | `codebuddy` | `dsh-hooks-claude-code` | 24 | 5 | 19 | 0 | CARRY |
-| `opencode` | — | **无** | 5 | 0 | 5 | 0 | CARRY |
-| `copilot` | `github-copilot` | **无** | 12 | 0 | 12 | 0 | CARRY |
-| **合计** | | | **85** | **17** | **63** | **5** | |
+| Vendor | 别名 | 官方桥 | 事件 | 官方桥 | 原生翻译 | 只观察 | 自建桥 | 近似 | rules |
+| :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | :---: |
+| `claude` | `claude-code`, `cc` | `dsh-hooks-claude-code` | 33 | 7 | 24 | 2 | 0 | 2 | CARRY |
+| `codex` | `openai-codex` | `dsh-hooks-codex` | 12 | 5 | 4 | 3 | 0 | 1 | CARRY |
+| `workbuddy` | `codebuddy` | `dsh-hooks-claude-code` | 24 | 5 | 19 | 0 | 0 | 2 | CARRY |
+| `opencode` | — | **无** | 29 | 0 | 29 | 0 | 0 | 5 | CARRY |
+| `copilot` | `github-copilot` | **无** | 14 | 0 | 4 | 0 | 10 | 0 | CARRY |
+| **合计** | | | **112** | **17** | **80** | **5** | **10** | **10** | |
+
+> "近似"列统计 `degradations[]` 中自述 `Approximate` 的事件数。它与其他列并列展示、而不是藏进正文：**它不为零，就不许写成零。**
 
 三个容易被误读的点：
 
 - **`workbuddy`**：WorkBuddy 桌面端**没有公开 hook API**。本插件按 CodeBuddy 引擎（腾讯文档为 Claude-Code 兼容）处理，并把"桌面端无 API""`CODEBUDDY_PROJECT_DIR` 不导出""`modifiedInput` 不被读取"写进**每一条** `degradations`，由测试断言。
-- **`opencode`**：5 个回调名全部映射到 DSH seam，但 **TS 回调"体"不携带** —— 必须改写为命令。这是 out of scope，不是"忘做了"。
-- **`copilot`**：DSH 没有官方 Copilot 桥，所以这 12 个事件**全部由本插件自己翻译**。deny 真拦工具、block 真续跑、子 agent 真注入、approval 真决定 —— 详见 [Copilot 的特殊路径](#copilot-的特殊路径)。
+- **`opencode`**：29 个回调名全部映射到 DSH seam，但 **TS 回调"体"不携带** —— 必须改写为命令。这是 out of scope，不是"忘做了"。
+- **`copilot`**：DSH 没有官方 Copilot 桥，所以其 14 个事件里 10 个走本插件**自建桥**（`builtin-bridge`），4 个走原生翻译。deny 真拦工具、block 真续跑、子 agent 真注入、approval 真决定 —— 详见 [Copilot 的特殊路径](#copilot-的特殊路径)。
 
 ---
 
@@ -122,24 +124,27 @@ flowchart TB
     P["预置插件<br/>preset-class plugin"] -->|"显式声明 vendor + event"| S["ctx.compatAdapter<br/>registerHook / registerRules"]
     S --> G{"能力分级"}
     G -->|"official-bridge · 17"| B["官方桥<br/>dsh-hooks-claude-code / -codex"]
-    G -->|"native-translate · 63"| T["原生翻译层<br/>src/translate.js"]
+    G -->|"native-translate · 80"| T["原生翻译层<br/>src/translate.js"]
     G -->|"native-seam · 5"| O["只观察路由<br/>src/observe.js"]
+    G -->|"builtin-bridge · 10"| BB["自建桥<br/>src/bridges/copilot.js"]
     G -->|"CARRY · rules"| R["原文逐字节携带"]
     G -->|"UNSUPPORTED"| X["拒绝 + reason<br/>永不挂载"]
     B --> SEAM["DSH seam<br/>tools/pre-execute · approval/request<br/>agent/turn-stopping · session/event …"]
     T --> SEAM
     O --> SEAM
+    BB --> SEAM
     R --> CTX["agent/created<br/>注入模型可见上下文"]
     SEAM --> RUN["真实拦截<br/>deny 阻断 · block 续跑 · ask 走审批"]
 ```
 
-三种路由的差别，就是**"决定能不能到达 DSH"**：
+四种路由的差别，就是**"决定能不能到达 DSH"**：
 
 | 路由 | 决定是否生效 | 用在哪 |
 | :--- | :--- | :--- |
-| `official-bridge` | ✅ 由官方桥映射 | 有官方桥的 vendor |
+| `official-bridge` | ✅ 由官方桥映射 | 有官方桥的 vendor（claude / codex / workbuddy） |
 | `native-translate` | ✅ 本插件直接产出 DSH 裁决类型 | 无桥但 seam 可拦截 |
 | `native-seam` | ❌ **只观察**，阻断尝试被记录并忽略 | 无取消能力的生命周期时刻 |
+| `builtin-bridge` | ✅ 本插件自建的桥（仅官方无桥时使用） | copilot |
 
 ---
 
@@ -309,7 +314,7 @@ DSH 的 `@deepseek-ai/dsh-hook-protocol` 只认 **Claude/Codex 方言**：
 
 若直接复用，**每一个 Copilot deny 都会被静默当成"没有决定"而放行**。所以 `src/translate.js` 里有一层 `parseCopilotStdout()` / `normalizeCopilotOutput()`：先按 Copilot 原生格式解析，再归一化成内部形状。
 
-这条路径有专门的测试（`test/smoke-copilot.test.js`，17 个用例）并纳入 `npm run verify:live` 的真实启动验证。
+这条路径有专门的测试（`test/smoke-copilot.test.js`，21 个用例）并纳入 `npm run verify:live` 的真实启动验证。
 
 ### 事件映射
 
@@ -347,7 +352,7 @@ DSH 的 `@deepseek-ai/dsh-hook-protocol` 只认 **Claude/Codex 方言**：
 3. **WorkBuddy 的每一行都必须说明"桌面端无公开 hook API"** —— 这是最容易误读的地方，所以它被写进每条 `degradations` 并由测试断言。
 
 <details>
-<summary><b>展开完整矩阵（85 行，含每行损失说明）</b></summary>
+<summary><b>展开完整矩阵（112 行，含每行损失说明）</b></summary>
 
 <!-- MATRIX:START -->
 
@@ -578,13 +583,13 @@ These are REAL interceptions: the hook decision reaches DSH. Vendors with an off
 
 ```bash
 npm run check-surface     # 逐项断言已安装 DSH 的 seam / 导出 / 事件 / 服务
-npm test                  # 87 个用例：单测 + 真实 Harness 冒烟
+npm test                  # 136 个用例：单测 + 真实 Harness 冒烟
 npm run verify            # 两者一起
 npm run verify:live       # 真实 profile 启动的端到端验证
 npm run verify:installed  # 确认"已装好的"插件真的生效
 ```
 
-`npm test` 全部通过（87/87），无第三方测试依赖（`node:test`）。
+`npm test` 全部通过（136/136），无第三方测试依赖（`node:test`）。
 
 ### 测试结构
 
@@ -599,6 +604,11 @@ npm run verify:installed  # 确认"已装好的"插件真的生效
 | `test/index.test.js` | 入口契约（`name` / `inject` / `Config` 默认值）、`dsh.bundle.patch`、patch 用 bare specifier、peer 版本精确钉住、locale 元数据 |
 | `test/smoke-copilot.test.js` | **Copilot 端到端**：顶层 `permissionDecision` 真的被解析并阻断；锚定 matcher；无效 matcher 不 match-all；sessionStart 注入；`agentStop` 真续跑 + runaway guard；子 agent 注入 |
 | `test/matrix-readme.test.js` | README 矩阵块与代码一致（防漂移）；无任何 `DIRECT`；无 vendor 谎称全支持 |
+| `test/doc-counts.test.js` | **散文数字防漂移**：badge、vendor 汇总表、流程图路由数、翻译点数、用例数、`package.json` 描述、`INTEGRATION.md` 全部从代码反推比对；并点名拒收已撤回的旧数字（85 / 87 / 107） |
+| `test/real-capabilities.test.js` | 逐项证明"真实能力"不是修辞：worktree porcelain 轮询真的检测到新增/删除、`ctx.lsp.query` 真的被调用、`user-questions/request` 真的作答、`request/header` 首帧只作基线、`step/end` 无工具时静默 |
+| `test/smoke-precise.test.js` | 精确 seam 端到端：`fs.watch` 真实文件监听、`settings/document-updated`、`session/event` 分派不再与 `todo/write` 撞车 |
+| `test/bridge-copilot.test.js` | 自建 Copilot 桥的单元契约：方言解析、顶层决策、锚定 matcher、`DIALECT_LIMITS`、`STOP_BLOCK_LIMIT=8` 失控保护 |
+| `test/integration-guide.test.js` | `INTEGRATION.md` 与真实 API 同步：文中出现的每个 API 名与错误码都真的存在，示例可执行 |
 
 `test/helpers/register-dsh-resolver.js` 用 `node:module` 的 `registerHooks` 把 `@deepseek-ai/*` 解析到已安装的 DSH（`$DSH_INSTALL_DIR` → PATH 上的 `dsh` → 已知全局安装位），找不到就**报错退出**而不是跳过测试。
 
@@ -628,11 +638,11 @@ verify-live: profile       adapter-verify
   ok   status() reports the carried rules with hashes
 
 verify-live matrix:
-  claude     hooks=32 supported /  0 refused   rules=CARRY
+  claude     hooks=33 supported /  0 refused   rules=CARRY
   codex      hooks=12 supported /  0 refused   rules=CARRY
   workbuddy  hooks=24 supported /  0 refused   rules=CARRY
-  opencode   hooks= 5 supported /  0 refused   rules=CARRY
-  copilot    hooks=12 supported /  0 refused   rules=CARRY
+  opencode   hooks=29 supported /  0 refused   rules=CARRY
+  copilot    hooks=14 supported /  0 refused   rules=CARRY
 
 verify-live: PASS
 ```
@@ -685,12 +695,12 @@ dsh-compat-adapter/
 │   └── vendors/             # 纯数据模块：无 I/O、不 import DSH
 │       ├── index.js         # vendor 注册表与别名
 │       ├── shared.js        # bridged / nativeSeam / nativeTranslate / unsupported 构造器
-│       ├── claude.js        # 32 事件
+│       ├── claude.js        # 33 事件
 │       ├── codex.js         # 12 事件
 │       ├── workbuddy.js     # 24 事件
-│       ├── opencode.js      # 5 事件
-│       └── copilot.js       # 12 事件
-├── test/                    # node:test，9 个文件，87 个用例
+│       ├── opencode.js      # 29 事件
+│       └── copilot.js       # 14 事件
+├── test/                    # node:test，14 个文件，136 个用例
 ├── scripts/
 │   ├── check-surface.js     # 逐项断言 DSH 表面
 │   ├── write-matrix.js      # 从代码重写 README 矩阵块

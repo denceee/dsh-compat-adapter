@@ -17,11 +17,11 @@
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3DA639?style=flat-square" alt="License: MIT"></a>
-  <a href="#verification"><img src="https://img.shields.io/badge/tests-126%20passing-3DA639?style=flat-square" alt="87 tests passing"></a>
+  <a href="#verification"><img src="https://img.shields.io/badge/tests-136%20passing-3DA639?style=flat-square" alt="136 tests passing"></a>
   <img src="https://img.shields.io/badge/DSH-0.2.0--rc.2-4D6BFE?style=flat-square" alt="DSH 0.2.0-rc.2">
   <img src="https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-339933?style=flat-square" alt="Node ^22.19 || >=24">
   <img src="https://img.shields.io/badge/vendors-5-8957E5?style=flat-square" alt="5 vendors">
-  <img src="https://img.shields.io/badge/hook%20events-112-0969DA?style=flat-square" alt="85 hook events">
+  <img src="https://img.shields.io/badge/hook%20events-112-0969DA?style=flat-square" alt="112 hook events">
   <img src="https://img.shields.io/badge/overclaim-none-3DA639?style=flat-square" alt="No overclaim">
 </p>
 
@@ -64,7 +64,7 @@ Every registration returns a **frozen** capability result. There is no `supporte
 | Grade | Meaning | In this version |
 | :--- | :--- | :--- |
 | `DIRECT` | A 1:1 DSH seam exists; semantics preserved verbatim. | **None.** See below. |
-| `ADAPTED` | A DSH seam exists but semantics are lossy; `degradations[]` states each loss. | **All 85 events** |
+| `ADAPTED` | A DSH seam exists but semantics are lossy; `degradations[]` states each loss. | **All 112 events** |
 | `CARRY` | No general mapping; carried byte-for-byte and injected at session start. Never becomes executable policy. | **All 5 vendors' rules** |
 | `UNSUPPORTED` | No faithful mapping; rejected with a `reason`. | Procedural boundaries (below) |
 
@@ -72,9 +72,9 @@ Every registration returns a **frozen** capability result. There is no `supporte
 
 Both official bridges are themselves best-effort dialect adaptations. Claiming byte-faithfulness would be a false capability.
 
-So this plugin marks **not a single row `DIRECT`** — all 85 rows are `ADAPTED`, and every row must state its own losses. That is not pessimism, it is honesty: `test/matrix-readme.test.js` asserts `DIRECT.length === 0` and asserts that every `ADAPTED` row carries at least one degradation.
+So this plugin marks **not a single row `DIRECT`** — all 112 rows are `ADAPTED`, and every row must state its own losses. That is not pessimism, it is honesty: `test/matrix-readme.test.js` asserts `DIRECT.length === 0` and asserts that every `ADAPTED` row carries at least one degradation.
 
-> **Full coverage is not equivalence.** All 85 events are executable (0 refusals), but that is coverage where *every row states its losses* — not a claim that they all behave identically.
+> **Full coverage is not equivalence.** All 112 events are executable (0 refusals), but that is coverage where *every row states its losses* — not a claim that they all behave identically. **10 of them say `Approximate` in their own `degradations`** (Claude `MessageDisplay`, `StopFailure`; Codex `Interrupt`; WorkBuddy `Elicitation`, `ElicitationResult`; OpenCode `installation.updated`, `server.connected`, `session.deleted`, `session.updated`, `tui.toast.show`); the other **102 are real/precise mappings**. `test/doc-counts.test.js` compares these numbers against the code, so the prose can never claim more capability than the adapter has.
 
 ### Four hard invariants (enforced by tests, not by documentation)
 
@@ -98,20 +98,20 @@ So what are the real `UNSUPPORTED` paths left, now that every event is executabl
 
 Five independent adapters. Each is a pure data module (`src/vendors/<vendor>.js`): no I/O, no DSH imports, so the whole matrix is unit-testable without a Harness.
 
-| Vendor | Aliases | Official bridge | Events | Bridged | Translated | Observe-only | rules |
-| :--- | :--- | :--- | ---: | ---: | ---: | ---: | :---: |
-| `claude` | `claude-code`, `cc` | `dsh-hooks-claude-code` | 32 | 7 | 23 | 2 | CARRY |
-| `codex` | `openai-codex` | `dsh-hooks-codex` | 12 | 5 | 4 | 3 | CARRY |
-| `workbuddy` | `codebuddy` | `dsh-hooks-claude-code` | 24 | 5 | 19 | 0 | CARRY |
-| `opencode` | — | **none** | 5 | 0 | 5 | 0 | CARRY |
-| `copilot` | `github-copilot` | **none** | 12 | 0 | 12 | 0 | CARRY |
-| **Total** | | | **85** | **17** | **63** | **5** | |
+| Vendor | Aliases | Official bridge | Events | Bridged | Translated | Observe-only | Built-in bridge | Approximate | rules |
+| :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | :---: |
+| `claude` | `claude-code`, `cc` | `dsh-hooks-claude-code` | 33 | 7 | 24 | 2 | 0 | 2 | CARRY |
+| `codex` | `openai-codex` | `dsh-hooks-codex` | 12 | 5 | 4 | 3 | 0 | 1 | CARRY |
+| `workbuddy` | `codebuddy` | `dsh-hooks-claude-code` | 24 | 5 | 19 | 0 | 0 | 2 | CARRY |
+| `opencode` | — | **none** | 29 | 0 | 29 | 0 | 0 | 5 | CARRY |
+| `copilot` | `github-copilot` | **none** | 14 | 0 | 4 | 0 | 10 | 0 | CARRY |
+| **Total** | | | **112** | **17** | **80** | **5** | **10** | **10** | |
 
 Three things that are easy to misread:
 
 - **`workbuddy`** — the WorkBuddy desktop app **has no public hook API**. This adapter treats declarations as CodeBuddy-engine hooks (which Tencent documents as Claude-Code compatible) and writes "no desktop API", "`CODEBUDDY_PROJECT_DIR` is not exported" and "`modifiedInput` is not read" into *every* degradation row, asserted by tests.
-- **`opencode`** — all 5 callback names map to DSH seams, but the **TS callback bodies are not carried**; they must be re-authored as commands. That is explicitly out of scope, not forgotten.
-- **`copilot`** — DSH ships no Copilot bridge, so all 12 events are **translated by this plugin itself**: deny really blocks, block really forces another turn, subagents really receive context, approvals really decide. See [Copilot's special path](#copilots-special-path).
+- **`opencode`** — all 29 callback names map to DSH seams, but the **TS callback bodies are not carried**; they must be re-authored as commands. That is explicitly out of scope, not forgotten.
+- **`copilot`** — DSH ships no Copilot bridge, so 10 of its 14 events go through this plugin's **built-in bridge** (`builtin-bridge`) and 4 through native translation: deny really blocks, block really forces another turn, subagents really receive context, approvals really decide. See [Copilot's special path](#copilots-special-path).
 
 ---
 
@@ -122,24 +122,27 @@ flowchart TB
     P["Preset-class plugin"] -->|"explicit vendor + event"| S["ctx.compatAdapter<br/>registerHook / registerRules"]
     S --> G{"Capability grading"}
     G -->|"official-bridge · 17"| B["Official bridge<br/>dsh-hooks-claude-code / -codex"]
-    G -->|"native-translate · 63"| T["Native translation layer<br/>src/translate.js"]
+    G -->|"native-translate · 80"| T["Native translation layer<br/>src/translate.js"]
     G -->|"native-seam · 5"| O["Observe-only router<br/>src/observe.js"]
+    G -->|"builtin-bridge · 10"| BB["Built-in bridge<br/>src/bridges/copilot.js"]
     G -->|"CARRY · rules"| R["Carried byte-for-byte"]
     G -->|"UNSUPPORTED"| X["Refused + reason<br/>never mounted"]
     B --> SEAM["DSH seams<br/>tools/pre-execute · approval/request<br/>agent/turn-stopping · session/event …"]
     T --> SEAM
     O --> SEAM
+    BB --> SEAM
     R --> CTX["agent/created<br/>inject model-facing context"]
     SEAM --> RUN["Real interception<br/>deny blocks · block continues · ask goes to approval"]
 ```
 
-The difference between the three routes is exactly **whether a decision reaches DSH**:
+The difference between the four routes is exactly **whether a decision reaches DSH**:
 
 | Route | Decision takes effect | Used for |
 | :--- | :--- | :--- |
-| `official-bridge` | ✅ mapped by the official bridge | vendors that have a bridge |
+| `official-bridge` | ✅ mapped by the official bridge | vendors that have a bridge (claude / codex / workbuddy) |
 | `native-translate` | ✅ this plugin produces the DSH decision type directly | no bridge, but the seam can intercept |
 | `native-seam` | ❌ **observe-only**; a blocking attempt is logged and ignored | lifecycle moments with no veto |
+| `builtin-bridge` | ✅ a bridge this plugin builds itself, only where no official one exists | copilot |
 
 ---
 
@@ -309,7 +312,7 @@ Copilot writes its decision at the **top level**:
 
 Reusing the parser would mean **every Copilot deny is silently treated as "no decision" and allowed through**. So `src/translate.js` has `parseCopilotStdout()` / `normalizeCopilotOutput()`: parse in Copilot's native shape first, then normalize into the internal shape.
 
-That path has dedicated coverage (`test/smoke-copilot.test.js`, 17 cases) and is part of the real-launch `npm run verify:live` assertions.
+That path has dedicated coverage (`test/smoke-copilot.test.js`, 21 cases) and is part of the real-launch `npm run verify:live` assertions.
 
 ### Event mapping
 
@@ -347,7 +350,7 @@ Three things to keep in mind when reading it:
 3. **Every WorkBuddy row must state "no public desktop hook API"** — the easiest thing to misread, so it lives in every `degradations` entry and is asserted by tests.
 
 <details>
-<summary><b>Expand the full matrix (85 rows with per-row losses)</b></summary>
+<summary><b>Expand the full matrix (112 rows with per-row losses)</b></summary>
 
 <!-- MATRIX:START -->
 
@@ -578,13 +581,13 @@ An honest list. Every item has a corresponding row in the matrix or an assertion
 
 ```bash
 npm run check-surface     # assert every consumed DSH seam / export / event / service
-npm test                  # 87 cases: unit tests + real-Harness smoke tests
+npm test                  # 136 cases: unit tests + real-Harness smoke tests
 npm run verify            # both of the above
 npm run verify:live       # end-to-end against a really launched profile
 npm run verify:installed  # confirm an ALREADY-INSTALLED bundle is really live
 ```
 
-`npm test` passes fully (87/87) with no third-party test dependencies (`node:test`).
+`npm test` passes fully (136/136) with no third-party test dependencies (`node:test`).
 
 ### Test layout
 
@@ -599,6 +602,11 @@ npm run verify:installed  # confirm an ALREADY-INSTALLED bundle is really live
 | `test/index.test.js` | Entry contract (`name` / `inject` / `Config` defaults), `dsh.bundle.patch`, bare-specifier row, exact peer pins, locale metadata |
 | `test/smoke-copilot.test.js` | **Copilot end-to-end**: top-level `permissionDecision` really decoded and blocking; anchored matchers; invalid matcher does not match-all; sessionStart injection; `agentStop` really continues + runaway guard; subagent injection |
 | `test/matrix-readme.test.js` | README matrix matches code (drift guard); no `DIRECT` anywhere; no vendor overclaims full support |
+| `test/doc-counts.test.js` | **Prose drift guard**: badge, vendor summary table, diagram route counts, translation-point count, test count, `package.json` description and `INTEGRATION.md` are all re-derived from code and compared; retracted figures (85 / 87 / 107) are rejected by name |
+| `test/real-capabilities.test.js` | Proves each "real capability" is not rhetoric: worktree porcelain polling really detects add/remove, `ctx.lsp.query` is really called, `user-questions/request` really answers, the first `request/header` is baseline-only, `step/end` stays silent with no tools |
+| `test/smoke-precise.test.js` | Precise seams end-to-end: real `fs.watch` file watching, `settings/document-updated`, and `session/event` dispatch no longer colliding with `todo/write` |
+| `test/bridge-copilot.test.js` | Unit contract of the built-in Copilot bridge: dialect parsing, top-level decision, anchored matchers, `DIALECT_LIMITS`, the `STOP_BLOCK_LIMIT=8` runaway guard |
+| `test/integration-guide.test.js` | `INTEGRATION.md` stays in sync with the real API: every API name and error code it names really exists, and its examples are executable |
 
 `test/helpers/register-dsh-resolver.js` uses `node:module`'s `registerHooks` to resolve `@deepseek-ai/*` to the installed DSH (`$DSH_INSTALL_DIR` → `dsh` on PATH → known global location), and **errors out** rather than skipping tests when it cannot.
 
@@ -628,11 +636,11 @@ verify-live: profile       adapter-verify
   ok   status() reports the carried rules with hashes
 
 verify-live matrix:
-  claude     hooks=32 supported /  0 refused   rules=CARRY
+  claude     hooks=33 supported /  0 refused   rules=CARRY
   codex      hooks=12 supported /  0 refused   rules=CARRY
   workbuddy  hooks=24 supported /  0 refused   rules=CARRY
-  opencode   hooks= 5 supported /  0 refused   rules=CARRY
-  copilot    hooks=12 supported /  0 refused   rules=CARRY
+  opencode   hooks=29 supported /  0 refused   rules=CARRY
+  copilot    hooks=14 supported /  0 refused   rules=CARRY
 
 verify-live: PASS
 ```
@@ -685,12 +693,12 @@ dsh-compat-adapter/
 │   └── vendors/             # pure data modules: no I/O, no DSH imports
 │       ├── index.js         # vendor registry and aliases
 │       ├── shared.js        # bridged / nativeSeam / nativeTranslate / unsupported builders
-│       ├── claude.js        # 32 events
+│       ├── claude.js        # 33 events
 │       ├── codex.js         # 12 events
 │       ├── workbuddy.js     # 24 events
-│       ├── opencode.js      # 5 events
-│       └── copilot.js       # 12 events
-├── test/                    # node:test, 9 files, 87 cases
+│       ├── opencode.js      # 29 events
+│       └── copilot.js       # 14 events
+├── test/                    # node:test, 14 files, 136 cases
 ├── scripts/
 │   ├── check-surface.js     # assert the DSH surface item by item
 │   ├── write-matrix.js      # regenerate the README matrix from code

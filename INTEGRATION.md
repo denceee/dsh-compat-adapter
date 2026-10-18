@@ -68,13 +68,14 @@ const vendor = matrix.find((v) => v.vendor === 'copilot')
 console.log(vendor.hooks.map((h) => `${h.event} → ${h.capability} (${h.route})`))
 ```
 
-当前版本：5 家 vendor、85 个事件、**0 个拒绝**。但"支持"分两种，必须区别对待：
+当前版本：5 家 vendor、112 个事件、**0 个拒绝**；其中 102 个为真实/精确映射，**10 个在自己的 `degradations` 里明确写着 `Approximate`**。但"支持"分两种，必须区别对待：
 
 | `route` | 含义 | 你该期待什么 |
 | :--- | :--- | :--- |
 | `official-bridge` | 交给 DSH 官方桥 | 行为最接近原厂商 |
 | `native-translate` | 本插件翻译成真实拦截 | 决策真的生效，但有列明的损失 |
 | `native-seam` | 只观察 | **不能阻断**，只能记录 |
+| `builtin-bridge` | 本插件自建的桥（仅官方无桥时，如 copilot） | 决策真的生效；它**不是** DSH 官方桥，升级 DSH 时需重新验证 |
 
 ### 必读：`degradations`
 
