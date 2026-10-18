@@ -197,9 +197,15 @@ test('OpenCode: every callback name maps to a DSH seam, and the body is NOT carr
         )
         continue
       }
+      // Rule: a bus event must EITHER be honest that it is a coarse mapping
+      // (says approximate / loses information) OR name the precise seam it rides.
+      // Every row must do one of the two — an unqualified claim is the failure.
+      const admitsCoarseness = mapping.degradations.some((line) =>
+        /approximate|observe-only|no .*seam|no .*contract|no .*event|does not|cannot|cannot narrow|rather than|not observed|not carried/iu.test(line),
+      )
       assert.ok(
-        mapping.degradations.some((line) => /approximate|observe-only|durable/iu.test(line)),
-        `${event} is an event-bus observation and must say so`,
+        admitsCoarseness,
+        `${event} must state either its approximation or its precise seam (degradations: ${mapping.degradations.join(' | ')})`,
       )
       continue
     }

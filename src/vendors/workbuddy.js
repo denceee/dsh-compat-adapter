@@ -174,11 +174,11 @@ export const HOOKS = freezeHookTable(VENDOR, {
     ],
   }),
   FileChanged: nativeTranslate({
-    point: 'tools/post-execute',
-    seams: ['tools/post-execute'],
+    point: 'workspace/changes',
+    seams: ['session/event'],
     degradations: [
-      'Approximate: fires after a tool call that could have changed files, not when a file actually changes.',
-      'External edits do not fire it.',
+      'Fires once per completed turn with that turn\'s changed-file summary, not once per file.',
+      'External edits that no turn recorded are not observed.',
     ],
   }),
   CwdChanged: nativeTranslate({
@@ -210,10 +210,11 @@ export const HOOKS = freezeHookTable(VENDOR, {
     ],
   }),
   InstructionsLoaded: nativeTranslate({
-    point: 'session/created',
+    point: 'agent/instructions-loaded',
     seams: ['session/created'],
     degradations: [
-      'Observe-only and coarser: reports session creation, not which files loaded (`instructionFiles` is null).',
+      'Fires once per created session with the discovered file list, not once per file.',
+      'Observe-only: no veto or rewrite at this seam.',
     ],
   }),
   ConfigChange: nativeTranslate({

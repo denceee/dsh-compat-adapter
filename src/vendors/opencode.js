@@ -97,19 +97,19 @@ export const HOOKS = freezeHookTable(VENDOR, {
     ],
   }),
   'file.edited': nativeTranslate({
-    point: 'tools/post-execute',
-    seams: ['tools/post-execute'],
+    point: 'workspace/changes',
+    seams: ['session/event'],
     degradations: [
-      'Approximate: fires after a tool call that could have written files, not when a file is actually edited.',
-      'External edits outside DSH tool calls do not fire it.',
+      'Fires once per completed turn with that turn\'s changed-file summary, not per edit event.',
+      'A matcher on a path cannot narrow per file: the payload carries the turn\'s complete path list.',
     ],
   }),
   'file.watcher.updated': nativeTranslate({
-    point: 'tools/post-execute',
-    seams: ['tools/post-execute'],
+    point: 'workspace/changes',
+    seams: ['session/event'],
     degradations: [
-      'Approximate: DSH has no file-watch contract, so this observes tool completion rather than watcher events.',
-      'A matcher on a path cannot narrow: the payload carries the tool call, not a watched path.',
+      'DSH has no file-WATCHER event, so watcher updates are approximated by the turn\'s changed-file summary.',
+      'Fires per completed turn, not when the watcher notices a change.',
     ],
   }),
   'installation.updated': nativeTranslate({
@@ -134,24 +134,32 @@ export const HOOKS = freezeHookTable(VENDOR, {
     degradations: ['Approximate: no DSH LSP seam exists; this fires on tool completion.'],
   }),
   'message.part.removed': nativeTranslate({
-    point: 'session/event',
-    seams: ['session/event'],
-    degradations: ['Approximate: observes the durable session event stream; DSH publishes no part-level removal hook.'],
+    point: 'agent/inbox/inserted',
+    seams: ['agent/inbox/inserted'],
+    degradations: [
+      'DSH publishes no part-level removal event, so a message arrival is the closest honest trigger; the payload names the new message, not the removed part.',
+    ],
   }),
   'message.part.updated': nativeTranslate({
-    point: 'session/event',
-    seams: ['session/event'],
-    degradations: ['Approximate: observes the durable session event stream rather than part updates.'],
+    point: 'agent/inbox/inserted',
+    seams: ['agent/inbox/inserted'],
+    degradations: [
+      'DSH publishes no part-level update event, so this fires when a message enters the inbox; the payload names the whole message, not one part.',
+    ],
   }),
   'message.removed': nativeTranslate({
-    point: 'session/event',
-    seams: ['session/event'],
-    degradations: ['Approximate: DSH message removal is a surface operation with no hook point.'],
+    point: 'agent/inbox/inserted',
+    seams: ['agent/inbox/inserted'],
+    degradations: [
+      'DSH message removal is a surface operation with no hook point, so a message arrival is the closest trigger; the payload does not identify the removed message.',
+    ],
   }),
   'message.updated': nativeTranslate({
-    point: 'session/event',
-    seams: ['session/event'],
-    degradations: ['Approximate: observes the durable event stream; each logged message event fires it.'],
+    point: 'agent/inbox/inserted',
+    seams: ['agent/inbox/inserted'],
+    degradations: [
+      'Fires when a message enters an agent inbox, which is the real message-arrival moment; in-place edits of an existing message are not observed.',
+    ],
   }),
   'permission.asked': nativeTranslate({
     point: 'approval/request',
@@ -187,9 +195,12 @@ export const HOOKS = freezeHookTable(VENDOR, {
     degradations: ['Approximate: DSH fires when an Agent leaves the registry (also on reload/teardown), broader than a deletion.'],
   }),
   'session.diff': nativeTranslate({
-    point: 'tools/post-execute',
-    seams: ['tools/post-execute'],
-    degradations: ['Approximate: DSH records workspace changes per session rather than publishing a diff event; this observes tool completion.'],
+    point: 'workspace/changes',
+    seams: ['session/event'],
+    degradations: [
+      'Fires once per completed turn with that turn\'s changed-file summary (paths, added/deleted counts) rather than a live diff stream.',
+      'File contents diffs are not carried to the hook; only the changed-path list and line counts.',
+    ],
   }),
   'session.error': nativeTranslate({
     point: 'agent/error',

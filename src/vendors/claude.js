@@ -148,11 +148,12 @@ export const HOOKS = freezeHookTable(VENDOR, {
     ],
   }),
   InstructionsLoaded: nativeTranslate({
-    point: 'session/created',
+    point: 'agent/instructions-loaded',
     seams: ['session/created'],
     degradations: [
-      'Observe-only and coarser: DSH announces the session, not which instruction files were loaded; `instructionFiles` is null.',
-      'Fires once per created session rather than once per discovered instruction file.',
+      'Fires once per created session with the full discovered list, not once per file as the reference event does.',
+      'The list is what DSH discovery would find (CLAUDE.md, AGENTS.md, configured candidates); a file added later is not re-reported.',
+      'Observe-only: DSH loads instructions through dsh-agent-instructions, which exposes no veto or rewrite here.',
     ],
   }),
   UserPromptExpansion: nativeTranslate({
@@ -268,11 +269,12 @@ export const HOOKS = freezeHookTable(VENDOR, {
     ],
   }),
   FileChanged: nativeTranslate({
-    point: 'tools/post-execute',
-    seams: ['tools/post-execute'],
+    point: 'workspace/changes',
+    seams: ['session/event'],
     degradations: [
-      'Approximate: DSH has no file-watch hook contract, so this fires after a tool call that could have changed files, not when a file actually changes.',
-      'External edits (outside DSH tool calls) do not fire it.',
+      'Fires once per completed top-level turn with that turn\'s changed-file summary, not once per file as the reference event does.',
+      'External edits that no turn recorded are still not observed; only changes DSH itself summarized.',
+      'A `matcher` on the watched path cannot narrow per file: the payload carries the turn\'s complete path list.',
     ],
   }),
   WorktreeCreate: nativeTranslate({

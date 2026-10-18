@@ -142,7 +142,28 @@ export const NATIVE_TRANSLATIONS = Object.freeze({
     mode: 'emit',
     produces: 'none',
   }),
+  'agent/instructions-loaded': Object.freeze({
+    event: 'InstructionsLoaded',
+    seam: 'session/created',
+    mode: 'emit',
+    produces: 'none',
+  }),
   // Agent status flips idle/running — the closest honest mapping for "idle".
+  // Precise message-arrival observation. `agent/inbox/inserted` carries the real
+  // UserMessage that entered an agent's inbox, which is a genuine message event
+  // rather than a whole-session-stream approximation.
+  'workspace/changes': Object.freeze({
+    event: 'FileChanged',
+    seam: 'session/event',
+    mode: 'emit',
+    produces: 'none',
+  }),
+  'agent/inbox/inserted': Object.freeze({
+    event: 'message.updated',
+    seam: 'agent/inbox/inserted',
+    mode: 'emit',
+    produces: 'none',
+  }),
   'agent/status': Object.freeze({
     event: 'TeammateIdle',
     seam: 'agent/status',
@@ -219,6 +240,33 @@ export function buildTranslationPayload(point, facts) {
       return { ...base, source: facts.source ?? 'startup' }
     case 'agent/disposed':
       return { ...base }
+    case 'agent/inbox/inserted':
+      return {
+        ...base,
+        messageId: facts.messageId ?? null,
+        text: facts.text ?? '',
+        role: 'user',
+        transition: facts.transition ?? 'updated',
+      }
+    case 'agent/instructions-loaded':
+      return {
+        ...base,
+        source: facts.source ?? 'session-start',
+        // Real discovered file list, not an approximation.
+        instructionFiles: Array.isArray(facts.paths) ? facts.paths : [],
+        projectRoot: facts.projectRoot ?? null,
+      }
+    case 'workspace/changes':
+      return {
+        ...base,
+        // The vendor reports one changed path per invocation; DSH summarizes a
+        // whole turn, so the event carries the turn and its complete file list.
+        turn: facts.turn ?? null,
+        paths: Array.isArray(facts.paths) ? facts.paths : [],
+        total: facts.total ?? 0,
+        added: facts.added ?? 0,
+        deleted: facts.deleted ?? 0,
+      }
     case 'compaction/end':
       return {
         ...base,

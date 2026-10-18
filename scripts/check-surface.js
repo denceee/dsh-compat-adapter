@@ -25,6 +25,7 @@ const SERVICE_PROVIDERS = Object.freeze({
   shell: '@deepseek-ai/dsh-shell',
   sessionProjections: '@deepseek-ai/dsh-session-projection',
   shellEnv: '@deepseek-ai/dsh-shell-env',
+  workspaceChanges: '@deepseek-ai/dsh-workspace-changes',
 })
 
 /**

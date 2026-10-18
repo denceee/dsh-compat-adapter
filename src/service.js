@@ -873,6 +873,91 @@ export class CompatAdapter {
       return
     }
 
+    if (translation.point === 'agent/inbox/inserted') {
+      // Precise message-arrival observation: the event carries the actual
+      // UserMessage, so the payload names the message rather than approximating.
+      this.ctx.on('agent/inbox/inserted', async (payload) => {
+        const message = payload?.message
+        await fire(
+          buildTranslationPayload('agent/inbox/inserted', {
+            sessionId: String(payload.agent?.id ?? ''),
+            cwd: payload.agent?.session?.header?.cwd,
+            messageId: message?.id === undefined ? undefined : String(message.id),
+            text: Array.isArray(message?.content)
+              ? message.content.map((block) => block?.text ?? '').join('')
+              : '',
+            transition: registration.event.replace(/^message\./u, ''),
+          }),
+          { cwd: payload.agent?.session?.header?.cwd },
+        )
+      })
+      return
+    }
+
+    if (translation.point === 'agent/instructions-loaded') {
+      // Precise instruction-file reporting: dsh-agent-instructions exports the
+      // discovery function, so this reports the files actually found for the
+      // session cwd rather than approximating from session creation.
+      this.ctx.on('session/created', async (session) => {
+        const cwd = session?.header?.cwd
+        if (typeof cwd !== 'string' || cwd === '') return
+        let files = []
+        try {
+          const { discoverBaselineInstructionFiles } = await loadPeer(
+            '@deepseek-ai/dsh-agent-instructions',
+          )
+          const discovered = await discoverBaselineInstructionFiles({ cwd })
+          files = (Array.isArray(discovered) ? discovered : [])
+            .map((file) => file?.displayPath ?? file?.absolutePath ?? '')
+            .filter((path) => path !== '')
+        } catch (error) {
+          log(`cannot discover instruction files for ${cwd}: ${String(error?.message ?? error)}`)
+        }
+        await fire(
+          buildTranslationPayload('agent/instructions-loaded', {
+            sessionId: String(session?.id ?? ''),
+            cwd,
+            source: 'session-start',
+            paths: files,
+          }),
+          { cwd },
+        )
+      })
+      return
+    }
+
+    if (translation.point === 'workspace/changes') {
+      // Precise file-change observation: the durable event names the turn, and
+      // the summary service gives the changed paths for that turn. This is a
+      // real changed-file list, not an inference from tool calls.
+      this.ctx.on('session/event', async (session, event) => {
+        if (event?.type !== 'workspace/changes') return
+        const changeService = this.ctx.get('workspaceChanges')
+        let summary
+        try {
+          summary = changeService?.summary?.(session.id, event.seq)
+        } catch {
+          summary = undefined
+        }
+        const paths = Array.isArray(summary?.files)
+          ? summary.files.map((file) => file?.path ?? '').filter((path) => path !== '')
+          : []
+        await fire(
+          buildTranslationPayload('workspace/changes', {
+            sessionId: String(session?.id ?? ''),
+            cwd: session?.header?.cwd ?? summary?.cwd,
+            turn: event.data?.turn ?? summary?.turn,
+            paths,
+            total: summary?.total ?? paths.length,
+            added: summary?.added,
+            deleted: summary?.deleted,
+          }),
+          { cwd: session?.header?.cwd ?? summary?.cwd },
+        )
+      })
+      return
+    }
+
     if (translation.point === 'compaction/end' || translation.point === 'compaction/start') {
       // Compaction observations. DSH logs `compaction/summary` (the generated
       // summary) and then `compaction/end`; preCompact fires on the start marker.

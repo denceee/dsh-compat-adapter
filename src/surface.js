@@ -23,6 +23,7 @@ export const DSH_SURFACE = Object.freeze({
     'shell',
     'sessionProjections',
     'shellEnv',
+    'workspaceChanges',
   ]),
   /** Host events the adapter listens on or relies on the bridges listening to. */
   events: Object.freeze([
@@ -40,6 +41,8 @@ export const DSH_SURFACE = Object.freeze({
     'approval/request',
     'session/created',
     'agent/status',
+    'agent/inbox/inserted',
+    'workspace/changes',
   ]),
   /** DSH packages whose exports the adapter imports, with the symbols it uses. */
   packages: Object.freeze({
