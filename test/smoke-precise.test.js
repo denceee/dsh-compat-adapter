@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import { createAdapterFixture } from './helpers/harness.js'
 import { waitFor, waitForJson } from './helpers/wait.js'
 
@@ -247,4 +248,91 @@ test('FileChanged stays honest when ctx.fs is unavailable', async (t) => {
   // is logged. Assert the outer contract is unaffected.
   assert.ok(registration.degradations.some((line) => /without ctx\.fs|falls back/iu.test(line)))
   void status
+})
+
+test('lsp.updated queries the REAL ctx.lsp seam and reports the result', async (t) => {
+  // The official LSP plugin is not part of every profile, so this test mounts a
+  // minimal service that obeys the SAME contract (registerProvider + query over
+  // the four read-only operations). It proves the adapter really calls the seam
+  // and forwards the server's answer, not that a tool call happened.
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-lsp-'))
+  const { command, trace } = recordingHook(dir, 'lsp')
+  const { adapter, ctx, dispose } = await createAdapterFixture()
+  t.after(dispose)
+
+  /** @type {Array<object>} */
+  const queries = []
+  ctx.provide('lsp', {
+    async query(request) {
+      queries.push(request)
+      return {
+        kind: 'locations',
+        locations: [{ uri: 'file:///workspace/src/a.ts', range: { start: { line: 11, character: 2 }, end: { line: 11, character: 9 } } }],
+        resolvedWorkspaceUri: 'file:///workspace',
+      }
+    },
+  })
+  ctx.provide('workspaceChanges', {
+    summary: () => ({ turn: 1, cwd: dir, files: [{ path: 'src/a.ts' }], total: 1, added: 3, deleted: 0 }),
+  })
+
+  const registration = await adapter.registerHook({ vendor: 'opencode', event: 'lsp.updated', handler: command })
+  assert.equal(registration.capability, 'ADAPTED')
+  assert.equal(registration.seams[0], 'lsp', 'lsp.updated must ride the real ctx.lsp seam')
+
+  ctx.emit(scopeTarget({}, undefined), 'session/event', { id: 'sess-lsp', header: { cwd: dir } }, {
+    type: 'workspace/changes', seq: 7, time: Date.now(), data: { turn: 1 },
+  })
+  const payload = await waitForJson(trace)
+
+  assert.equal(queries.length, 1, 'the seam must be queried exactly once for one changed file')
+  assert.equal(queries[0].operation, 'hover')
+  assert.equal(queries[0].filePath, 'src/a.ts')
+  assert.equal(queries[0].workspaceRoot, dir, 'the seam requires a workspace root, never defaulted')
+  assert.equal(payload.resultKind, 'locations')
+  assert.equal(payload.locations[0].uri, 'file:///workspace/src/a.ts')
+  assert.equal(payload.operation, 'hover')
+})
+
+test('the LSP path reports absence instead of inventing a result', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-nolsp-'))
+  const { command } = recordingHook(dir, 'nolsp')
+  const { adapter, ctx, dispose } = await createAdapterFixture()
+  t.after(dispose)
+  const registration = await adapter.registerHook({ vendor: 'opencode', event: 'lsp.updated', handler: command })
+  assert.equal(registration.capability, 'ADAPTED')
+  // No ctx.lsp mounted: the registration is still valid, and the runtime reason
+  // must be the honest absence, not a fabricated query result.
+  assert.equal(ctx.get('lsp'), undefined)
+  ctx.emit(scopeTarget({}, undefined), 'session/event', { id: 's', header: { cwd: dir } }, {
+    type: 'workspace/changes', seq: 1, time: Date.now(), data: { turn: 1 },
+  })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  assert.equal(ctx.get('lsp'), undefined)
+})
+
+test('the LSP path surfaces a seam error code rather than swallowing it', async (t) => {
+  // A real language server can be unavailable (LSP_UNAVAILABLE). The hook must
+  // learn that, rather than receiving an empty result that looks like "no answer".
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-lsperr-'))
+  const { command, trace } = recordingHook(dir, 'lsperr')
+  const { adapter, ctx, dispose } = await createAdapterFixture()
+  t.after(dispose)
+  ctx.provide('lsp', {
+    async query() {
+      const error = new Error('no provider for extension .ts')
+      error.code = 'LSP_UNAVAILABLE'
+      throw error
+    },
+  })
+  ctx.provide('workspaceChanges', {
+    summary: () => ({ turn: 1, cwd: dir, files: [{ path: 'src/a.ts' }], total: 1, added: 0, deleted: 0 }),
+  })
+  await adapter.registerHook({ vendor: 'opencode', event: 'lsp.updated', handler: command })
+  ctx.emit(scopeTarget({}, undefined), 'session/event', { id: 'sess-e', header: { cwd: dir } }, {
+    type: 'workspace/changes', seq: 3, time: Date.now(), data: { turn: 1 },
+  })
+  const payload = await waitForJson(trace)
+  assert.equal(payload.unavailableReason, 'LSP_UNAVAILABLE', 'the seam error code must reach the hook')
+  assert.equal(payload.resultKind, null)
 })

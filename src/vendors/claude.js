@@ -198,11 +198,11 @@ export const HOOKS = freezeHookTable(VENDOR, {
     ],
   }),
   PostToolBatch: nativeTranslate({
-    point: 'tools/post-execute',
-    seams: ['tools/post-execute'],
+    point: 'step/end',
+    seams: ['session/event'],
     degradations: [
-      'Approximate: DSH dispatches tools individually and has no batch seam, so this fires per completed tool call rather than once per batch.',
-      'The hook receives one tool result, not a batch summary.',
+      'REAL batch boundary: DSH defines one step as one model call plus the tool executions it requested, so this fires once per completed step with the batch\'s tool names and count.',
+      'The payload carries the batch identity and tool names, not the individual tool results; a hook needing result bodies should also use PostToolUse.',
     ],
   }),
   Notification: nativeTranslate({
@@ -279,48 +279,53 @@ export const HOOKS = freezeHookTable(VENDOR, {
     ],
   }),
   WorktreeCreate: nativeTranslate({
-    point: 'session/created',
-    seams: ['session/created'],
+    point: 'git/worktrees',
+    seams: ['shell'],
     degradations: [
-      'Approximate: DSH has no worktree lifecycle, so this fires at session creation — the moment an isolated worktree would be prepared — without any worktree information in the payload.',
+      'REAL detection: this adapter polls `git worktree list --porcelain` and fires when a worktree actually appears, so the hook receives the worktree path, HEAD and branch.',
+      'DSH has no worktree lifecycle event, so polling is used; a create/remove pair inside one poll interval is observed as the net change.',
+      'Requires ctx.shell and a real git repository; a non-repository session yields no worktrees and the hook never fires.',
     ],
   }),
   WorktreeRemove: nativeTranslate({
-    point: 'agent/disposed',
-    seams: ['agent/disposed'],
+    point: 'git/worktrees',
+    seams: ['shell'],
     degradations: [
-      'Approximate: DSH has no worktree lifecycle, so this fires when the agent leaves the registry — the moment a worktree would be cleaned up.',
-      'The payload carries no worktree path.',
+      'REAL detection: fires when a worktree disappears from `git worktree list --porcelain`, and the payload names the removed path with its last known HEAD and branch.',
+      'Polling-based, so the exact removal moment is bounded by the poll interval.',
     ],
   }),
   PreModelSwitch: nativeTranslate({
-    point: 'session/created',
-    seams: ['session/created'],
+    point: 'request/header',
+    seams: ['session/event'],
     degradations: [
-      'Approximate: DSH has no pre-switch waterfall, so this cannot run before a switch; it fires at session creation when the initial model is bound.',
-      'It does not observe later model changes.',
+      'REAL detection: fires when the durable `request/header` shows a changed provider/model, carrying both the previous and current values.',
+      'Timing differs from the reference tool: DSH logs the header when the next request carries the new config, so the hook observes the transition rather than running BEFORE it and cannot veto the switch.',
     ],
   }),
   PostModelSwitch: nativeTranslate({
-    point: 'session/event',
+    point: 'request/header',
     seams: ['session/event'],
     degradations: [
-      'Approximate: DSH publishes model binding through the durable `request/header` event, so this fires on header changes rather than on a dedicated switch event.',
+      'REAL detection from the durable `request/header`: the payload names the previous and current provider/model.',
+      'Shares one detection with PreModelSwitch, so both fire for the same transition; the `phase` field distinguishes them.',
     ],
   }),
   Elicitation: nativeTranslate({
-    point: 'agent/status',
-    seams: ['agent/status'],
+    point: 'user-questions/request',
+    seams: ['user-questions/request'],
     degradations: [
-      'Approximate and observe-only: DSH has no MCP elicitation seam, so this reports agent status flips while a question is pending rather than the elicitation itself.',
-      'The hook cannot answer or block it.',
+      'REAL interception: DSH\'s structured-question waterfall lets this hook claim the request and return an answer, so it can genuinely respond to the prompt.',
+      'The vendor models an MCP server requesting input; DSH models questions asked to the user, so the payload carries question text rather than an MCP request object.',
+      'An answer naming no asked question is ignored rather than fabricated.',
     ],
   }),
   ElicitationResult: nativeTranslate({
-    point: 'agent/status',
-    seams: ['agent/status'],
+    point: 'user-questions/request',
+    seams: ['user-questions/request'],
     degradations: [
-      'Approximate and observe-only: no DSH event carries an elicitation result, so this reports the status flip that follows the answer.',
+      'Real, because the answer IS the result: the same waterfall that produces the answer reports it, so no separate event is needed.',
+      'Fires once per answered question set, not per MCP elicitation round trip.',
     ],
   }),
 })

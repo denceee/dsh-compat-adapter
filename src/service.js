@@ -28,6 +28,7 @@ import { buildObservePayload, runObservedHook, OBSERVE_POINTS } from './observe.
 import {
   NATIVE_TRANSLATIONS,
   buildTranslationPayload,
+  elicitationAnswerFrom,
   injectedContextFrom,
   permissionVerdictFrom,
   postToolDecisionFrom,
@@ -45,6 +46,7 @@ import {
   rulesSource,
 } from './rules.js'
 import { DSH_SURFACE } from './surface.js'
+import { diffWorktrees, parseWorktreeList } from './worktree.js'
 import { vendorModule, vendorNames, VENDORS } from './vendors/index.js'
 import { buildMatrix } from './matrix.js'
 
@@ -61,6 +63,23 @@ const FALLBACK_HOOK_TIMEOUT_MS = 600_000
  * spin the agent forever.
  */
 const STOP_BLOCK_LIMIT = 8
+
+/**
+ * How often the worktree poller asks git for the worktree set. Git has no event
+ * stream, and a worktree operation is not latency-sensitive for a hook, so a
+ * modest interval keeps the cost invisible without missing a change.
+ */
+const WORKTREE_POLL_INTERVAL_MS = 5000
+
+/** Timeout for one `git worktree list` invocation. */
+const WORKTREE_POLL_TIMEOUT_MS = 5000
+
+/**
+ * Cap on how many changed files one LSP query pass covers. A large turn can
+ * change hundreds of files and every query is a language-server round trip, so
+ * the pass is bounded and the mapping states that only the first files are seen.
+ */
+const LSP_QUERY_FILE_LIMIT = 10
 
 /** Handler types the reference tools define; only `command` can be adapted. */
 const HANDLER_TYPES = Object.freeze(['command', 'http', 'mcp_tool', 'prompt', 'agent'])
@@ -557,7 +576,10 @@ export class CompatAdapter {
         reason: `dsh-compat-adapter: internal error — ${event} names unknown translation point ${JSON.stringify(point)}.`,
       }))
     }
-    if (this.ctx.get('shell') === undefined) {
+    // A point that answers structurally (the elicitation waterfall) does not
+    // need a shell to work; requiring one would refuse a fully supportable hook.
+    // `needsShell` defaults to true because most translated points run a command.
+    if (translation.needsShell !== false && this.ctx.get('shell') === undefined) {
       return this.#recordHook(id, declaration, capabilityResult({
         id,
         vendor: module.VENDOR,
@@ -950,6 +972,238 @@ export class CompatAdapter {
         // `ElicitationResult` shares this seam: the answer IS the result, so the
         // same interception reports it rather than needing a separate event.
         return answer
+      })
+      return
+    }
+
+    if (translation.point === 'step/end') {
+      // REAL batch boundary. DSH defines one step as one model call plus the tool
+      // executions it requested, so `step/end` is exactly the "the batch of tool
+      // calls for this round finished" moment, and the calls from that step are
+      // collected while it is open.
+      /** @type {Map<string, {turn: number|undefined, step: number|undefined, names: string[]}>} */
+      const openSteps = new Map()
+      this.ctx.on('session/event', async (session, event) => {
+        const key = String(session?.id ?? '')
+        if (event?.type === 'step/start') {
+          openSteps.set(key, { turn: event.data?.turn, step: event.data?.step, names: [] })
+          return
+        }
+        // Tool calls are recorded against the step they belong to.
+        if (event?.type === 'tool/call') {
+          const open = openSteps.get(key)
+          if (open !== undefined) {
+            // `tool/call` carries `name` directly on its data.
+            const name = event.data?.name
+            if (typeof name === 'string' && name !== '') open.names.push(name)
+          }
+          return
+        }
+        if (event?.type !== 'step/end') return
+        const open = openSteps.get(key)
+        openSteps.delete(key)
+        const names = open?.names ?? []
+        // A step with no tool calls has no batch to report.
+        if (names.length === 0) return
+        await fire(
+          buildTranslationPayload('step/end', {
+            sessionId: key,
+            cwd: session?.header?.cwd,
+            turn: event.data?.turn ?? open?.turn,
+            step: event.data?.step ?? open?.step,
+            toolCount: names.length,
+            toolNames: names,
+          }),
+          { cwd: session?.header?.cwd },
+        )
+      })
+      return
+    }
+
+    if (translation.point === 'request/header') {
+      // REAL model-switch detection: consecutive durable `request/header` events
+      // are compared, and a changed provider/model is what fires the hook. The
+      // reference tool fires Pre before and Post after the switch; DSH logs the
+      // header when the next request carries the new config, so the adapter
+      // reports the transition (both phases) with the observed values.
+      const lastConfig = new Map()
+      this.ctx.on('session/event', async (session, event) => {
+        if (event?.type !== 'request/header') return
+        const key = String(session?.id ?? '')
+        const config = event.data?.header?.config
+        if (config === undefined || config === null) return
+        const current = {
+          provider: typeof config.provider === 'string' ? config.provider : null,
+          model: typeof config.model === 'string' ? config.model : null,
+          reasoningEffort: typeof config.reasoningEffort === 'string' ? config.reasoningEffort : null,
+        }
+        const previous = lastConfig.get(key)
+        lastConfig.set(key, current)
+        // The first header establishes the baseline; nothing switched yet.
+        if (previous === undefined) return
+        const switched = previous.model !== current.model || previous.provider !== current.provider
+        if (!switched) return
+        for (const phase of ['pre', 'post']) {
+          await fire(
+            buildTranslationPayload('request/header', {
+              sessionId: key,
+              cwd: session?.header?.cwd,
+              provider: current.provider,
+              model: current.model,
+              reasoningEffort: current.reasoningEffort,
+              previousModel: previous.model,
+              previousProvider: previous.provider,
+              reason: event.data?.reason,
+              phase,
+            }),
+            { cwd: session?.header?.cwd },
+          )
+        }
+      })
+      return
+    }
+
+    if (translation.point === 'git/worktrees') {
+      // REAL worktree observation. DSH has no worktree lifecycle event, so the
+      // authoritative source is git itself: `git worktree list --porcelain` is
+      // polled while the session lives, and the set difference is what fires the
+      // hook. The hook therefore learns which worktree actually appeared or
+      // disappeared — information the old "session created" approximation never
+      // carried.
+      if (this.ctx.get('shell') === undefined) {
+        log(`${registration.event}: ctx.shell is absent, so git cannot be queried and no worktree can be observed`)
+        return
+      }
+      const snapshots = new Map()
+      const contracts = new Set()
+      let timer
+      /** Query git for one session's worktree set, then diff it. */
+      const poll = async (session) => {
+        const cwd = session?.header?.cwd
+        if (typeof cwd !== 'string' || cwd === '') return
+        const key = String(session.id ?? '')
+        const filesystem = this.ctx.get('fs')
+        if (filesystem !== undefined && typeof filesystem.stat === 'function') {
+          try {
+            const target = await filesystem.resolve(cwd)
+            await filesystem.stat(target, new AbortController().signal)
+          } catch {
+            return // not a readable directory: no worktree list to fetch
+          }
+        }
+        let entries = []
+        let repositoryRoot
+        try {
+          const shell = this.ctx.get('shell')
+          const request = shell.resolve({
+            command: 'git worktree list --porcelain',
+            workdir: cwd,
+            timeoutMs: WORKTREE_POLL_TIMEOUT_MS,
+          })
+          const handle = await shell.execute(request)
+          const result = await handle.result()
+          entries = parseWorktreeList(result?.stdout?.text ?? '')
+          // The first entry is the main worktree; its path is the repository root.
+          repositoryRoot = entries[0]?.path
+        } catch (error) {
+          log(`${registration.event}: cannot list worktrees in ${cwd}: ${String(error?.message ?? error)}`)
+          return
+        }
+        const previous = snapshots.get(key)
+        snapshots.set(key, entries)
+        if (previous === undefined) return // first poll establishes the baseline
+        const { added, removed } = diffWorktrees(previous, entries)
+        for (const entry of added) {
+          await fire(
+            buildTranslationPayload('git/worktrees', {
+              sessionId: key, cwd, repositoryRoot, worktrees: entries, added: [entry], removed: [],
+            }),
+            { cwd },
+          )
+        }
+        for (const entry of removed) {
+          await fire(
+            buildTranslationPayload('git/worktrees', {
+              sessionId: key, cwd, repositoryRoot, worktrees: entries, added: [], removed: [entry],
+            }),
+            { cwd },
+          )
+        }
+      }
+      const arm = (session) => {
+        const key = String(session?.id ?? '')
+        if (contracts.has(key)) return
+        contracts.add(key)
+        void poll(session)
+      }
+      for (const agent of this.ctx.get('agents')?.list?.() ?? []) arm(agent?.session)
+      this.ctx.on('session/created', (session) => arm(session))
+      this.ctx.on('agent/disposed', (payload) => {
+        const key = String(payload?.agent?.id ?? '')
+        snapshots.delete(key)
+        contracts.delete(key)
+      })
+      timer = setInterval(() => {
+        for (const agent of this.ctx.get('agents')?.list?.() ?? []) void poll(agent?.session)
+      }, WORKTREE_POLL_INTERVAL_MS)
+      timer.unref?.()
+      this.ctx.effect?.(() => () => clearInterval(timer), `compat-adapter worktree poller ${registration.id}`)
+      log(`${registration.event}: polling git worktrees every ${WORKTREE_POLL_INTERVAL_MS}ms (real detection, not a session approximation)`)
+      return
+    }
+
+    if (translation.point === 'lsp/query') {
+      // Real LSP navigation through the official `@deepseek-ai/dsh-lsp` seam.
+      //
+      // The seam is a PULL API (registerProvider + query over four read-only
+      // operations), so "LSP updated" is realized by QUERYING the server after a
+      // turn's files changed and reporting the real result. A composition
+      // without ctx.lsp reports the absence instead of inventing a result — and
+      // note that diagnostics are deliberately outside that seam's scope, so a
+      // diagnostics-shaped hook can never be fully faithful.
+      const lsp = typeof this.ctx.get === 'function' ? this.ctx.get('lsp') : undefined
+      if (lsp === undefined || typeof lsp.query !== 'function') {
+        log(`${registration.event}: ctx.lsp is absent (install @deepseek-ai/dsh-lsp), so no language-server query can run`)
+        return
+      }
+      this.ctx.on('session/event', async (session, event) => {
+        if (event?.type !== 'workspace/changes') return
+        const cwd = session?.header?.cwd
+        if (typeof cwd !== 'string' || cwd === '') return
+        let summary
+        try {
+          summary = this.ctx.get('workspaceChanges')?.summary?.(session.id, event.seq)
+        } catch {
+          summary = undefined
+        }
+        const paths = Array.isArray(summary?.files)
+          ? summary.files.map((file) => file?.path ?? '').filter((path) => path !== '')
+          : []
+        for (const filePath of paths.slice(0, LSP_QUERY_FILE_LIMIT)) {
+          // The seam requires a cursor; position 0 is the only honest default
+          // without a model-supplied location, and the mapping says so.
+          let result
+          let unavailableReason
+          try {
+            result = await lsp.query({ operation: 'hover', filePath, position: { line: 0, character: 0 }, workspaceRoot: cwd })
+          } catch (error) {
+            unavailableReason = typeof error?.code === 'string' ? error.code : String(error?.message ?? error)
+            result = undefined
+          }
+          await fire(
+            buildTranslationPayload('lsp/query', {
+              sessionId: String(session.id ?? ''),
+              cwd,
+              filePath,
+              operation: 'hover',
+              resultKind: result?.kind,
+              locations: result?.kind === 'locations' ? result.locations : [],
+              hover: result?.kind === 'hover' ? result.hover : null,
+              unavailableReason: unavailableReason ?? null,
+            }),
+            { cwd },
+          )
+        }
       })
       return
     }

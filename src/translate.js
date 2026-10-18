@@ -168,6 +168,57 @@ export const NATIVE_TRANSLATIONS = Object.freeze({
     seam: 'user-questions/request',
     mode: 'waterfall',
     produces: 'AskUserQuestionAnswer',
+    // The interception itself needs no shell: it answers structurally. A hook
+    // MAY still run a command, which is why the capability is graded per seam.
+    needsShell: false,
+  }),
+  // REAL LSP navigation, when a composition mounts `@deepseek-ai/dsh-lsp`.
+  //
+  // `ctx.lsp` is a PULL seam: it exposes registerProvider + query over exactly
+  // four read-only operations. That is NOT the same contract as a push-style
+  // "diagnostics changed" notification, so this point performs a query and dates
+  // the result, and the mapping states precisely which half is faithful.
+  // REAL git worktree detection.
+  //
+  // DSH has no worktree lifecycle event, but a worktree has an unmistakable
+  // on-disk signal: `git worktree list --porcelain` and the per-worktree
+  // `.git/worktrees/<name>` administrative directory. Polling that through
+  // ctx.shell is a REAL observation of worktree creation/removal, not a
+  // "a session was created so a worktree probably appeared" approximation.
+  // REAL model-switch detection.
+  //
+  // DSH logs a durable `request/header` per request whose `EpochHeader.config`
+  // carries the provider, model and reasoning effort. Comparing consecutive
+  // headers turns a real model change into a hook event — the reference tool's
+  // Pre/PostModelSwitch pair — instead of firing once at session creation.
+  // REAL tool-batch completion.
+  //
+  // DSH defines a step as "one model call plus the tool executions it requested",
+  // so `step/end` IS the batch boundary the reference tool's PostToolBatch names.
+  // This replaces firing per completed tool call.
+  'step/end': Object.freeze({
+    event: 'PostToolBatch',
+    seam: 'session/event',
+    mode: 'emit',
+    produces: 'none',
+  }),
+  'request/header': Object.freeze({
+    event: 'PostModelSwitch',
+    seam: 'session/event',
+    mode: 'emit',
+    produces: 'none',
+  }),
+  'git/worktrees': Object.freeze({
+    event: 'WorktreeCreate',
+    seam: 'shell',
+    mode: 'poll',
+    produces: 'none',
+  }),
+  'lsp/query': Object.freeze({
+    event: 'lsp.updated',
+    seam: 'lsp',
+    mode: 'query',
+    produces: 'none',
   }),
   'fs/watch': Object.freeze({
     event: 'FileChanged',
@@ -293,6 +344,48 @@ export function buildTranslationPayload(point, facts) {
         questions: Array.isArray(facts.questions) ? facts.questions : [],
         questionCount: facts.questionCount ?? 0,
         requestId: facts.requestId ?? null,
+      }
+    case 'step/end':
+      return {
+        ...base,
+        // Real batch identity from the durable step boundary.
+        turn: facts.turn ?? null,
+        step: facts.step ?? null,
+        toolCount: facts.toolCount ?? 0,
+        toolNames: Array.isArray(facts.toolNames) ? facts.toolNames : [],
+      }
+    case 'request/header':
+      return {
+        ...base,
+        // Real call configuration from the durable header.
+        provider: facts.provider ?? null,
+        model: facts.model ?? null,
+        reasoningEffort: facts.reasoningEffort ?? null,
+        previousModel: facts.previousModel ?? null,
+        previousProvider: facts.previousProvider ?? null,
+        reason: facts.reason ?? null,
+        // The reference pair shares one detection; `phase` says which half this is.
+        phase: facts.phase ?? 'post',
+      }
+    case 'git/worktrees':
+      return {
+        ...base,
+        // The parsed `git worktree list --porcelain` facts.
+        worktrees: Array.isArray(facts.worktrees) ? facts.worktrees : [],
+        added: Array.isArray(facts.added) ? facts.added : [],
+        removed: Array.isArray(facts.removed) ? facts.removed : [],
+        repositoryRoot: facts.repositoryRoot ?? null,
+      }
+    case 'lsp/query':
+      return {
+        ...base,
+        filePath: facts.filePath ?? '',
+        operation: facts.operation ?? 'hover',
+        // `locations` and `hover` are the seam's only two result shapes.
+        resultKind: facts.resultKind ?? null,
+        locations: Array.isArray(facts.locations) ? facts.locations : [],
+        hover: facts.hover ?? null,
+        unavailableReason: facts.unavailableReason ?? null,
       }
     case 'fs/watch':
       return {

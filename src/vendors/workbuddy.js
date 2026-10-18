@@ -189,17 +189,19 @@ export const HOOKS = freezeHookTable(VENDOR, {
     ],
   }),
   WorktreeCreate: nativeTranslate({
-    point: 'session/created',
-    seams: ['session/created'],
+    point: 'git/worktrees',
+    seams: ['shell'],
     degradations: [
-      'Approximate: DSH has no worktree lifecycle, so this fires at session creation without worktree details.',
+      'REAL detection: polls `git worktree list --porcelain` and fires when a worktree appears, carrying its path, HEAD and branch.',
+      'Polling-based; requires ctx.shell and a real git repository.',
     ],
   }),
   WorktreeRemove: nativeTranslate({
-    point: 'agent/disposed',
-    seams: ['agent/disposed'],
+    point: 'git/worktrees',
+    seams: ['shell'],
     degradations: [
-      'Approximate: fires when the agent leaves the registry; the payload carries no worktree path.',
+      'REAL detection: fires when a worktree disappears from `git worktree list --porcelain`, naming the removed path.',
+      'Polling-based, so removal timing is bounded by the poll interval.',
     ],
   }),
   Setup: nativeTranslate({
