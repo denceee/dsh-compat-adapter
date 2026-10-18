@@ -145,10 +145,10 @@ flowchart TB
 
 ```bash
 # 方式 A：plugin_manager 工具（受管理路径，推荐）
-#   action: install_bundle, target: <本仓库绝对路径>
+#   action: install_bundle, target: github:denceee/dsh-compat-adapter
 
 # 方式 B：CLI
-dsh plugin --profile <profile> add <本仓库绝对路径>
+dsh plugin --profile <profile> add github:denceee/dsh-compat-adapter
 ```
 
 装好后插件只做一件事：提供 `ctx.compatAdapter` 服务。**它自己不做任何适配** —— 适配由预置插件声明触发。

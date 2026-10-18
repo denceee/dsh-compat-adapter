@@ -145,10 +145,10 @@ A standard DSH Cordis bundle (`dsh.bundle.patch` in `package.json` + `cordis.pat
 
 ```bash
 # Option A: the plugin_manager tool (managed path, recommended)
-#   action: install_bundle, target: <absolute path to this repo>
+#   action: install_bundle, target: github:denceee/dsh-compat-adapter
 
 # Option B: CLI
-dsh plugin --profile <profile> add <absolute path to this repo>
+dsh plugin --profile <profile> add github:denceee/dsh-compat-adapter
 ```
 
 Once installed the plugin does one thing: it provides the `ctx.compatAdapter` service. **It adapts nothing by itself** — adaptation is triggered by preset plugins declaring assets.
