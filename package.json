@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "前置/基座适配插件：把 Claude Code / Codex / WorkBuddy / OpenCode 的 hooks 与 rules 通过显式声明适配到 DSH seam；能力分级（DIRECT/ADAPTED/CARRY/UNSUPPORTED）+ fail-closed。",
+  "description": "前置/基座适配插件：把 Claude Code / Codex / WorkBuddy / OpenCode / GitHub Copilot 的 hooks 与 rules 通过显式声明适配到 DSH seam；覆盖 5 家 vendor、85 个事件，能力分级（DIRECT/ADAPTED/CARRY/UNSUPPORTED），每条适配都逐项列出损失，fail-closed。",
   "main": "./index.js",
   "exports": {
     ".": "./index.js",

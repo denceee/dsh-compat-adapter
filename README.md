@@ -286,7 +286,7 @@ exit 0
 
 ## Copilot 的特殊路径
 
-GitHub Copilot 是唯一没有官方 DSH 桥的 vendor 之一，所以它的适配路径不同：**本插件真的实现翻译层**，不是旁观。
+GitHub Copilot 是**唯一没有官方 DSH 桥**的 vendor（Claude / Codex / WorkBuddy 都能复用官方桥），所以它的适配路径不同：**本插件真的实现翻译层**，不是旁观。
 
 ### 为什么不能直接复用 hook protocol
 

@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Compat Adapter",
-    "description": "Front/base adapter that carries Claude Code, Codex, WorkBuddy and OpenCode hooks and rules into DSH seams by explicit declaration, with graded capability and fail-closed refusals."
+    "description": "Front/base adapter that brings Claude Code, Codex, WorkBuddy, OpenCode and GitHub Copilot hooks and rules into DSH seams by explicit declaration. 5 vendors, 85 events, every adaptation graded with its losses listed, fail-closed."
   }
 }

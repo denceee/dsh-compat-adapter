@@ -286,7 +286,7 @@ Every example, test and document this plugin generates uses that one form; it **
 
 ## Copilot's special path
 
-GitHub Copilot is one of the vendors with no official DSH bridge, so its adaptation path differs: **this plugin really implements the translation layer** rather than standing by.
+GitHub Copilot is the only vendor with **no official DSH bridge** (Claude, Codex and WorkBuddy all reuse a shipped bridge), so its path differs: **this adapter really implements the translation layer** rather than watching from the side.
 
 ### Why the hook protocol cannot be reused directly
 
