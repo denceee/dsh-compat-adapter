@@ -1,6 +1,6 @@
 {
   "name": "dsh-compat-adapter",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "description": "前置/基座适配插件：把 Claude Code / Codex / WorkBuddy / OpenCode / GitHub Copilot 的 hooks 与 rules 通过显式声明适配到 DSH seam；覆盖 5 家 vendor、112 个事件，能力分级（DIRECT/ADAPTED/CARRY/UNSUPPORTED），每条适配都逐项列出损失（21 个原生翻译点，含真实拦截与改写），fail-closed。",
