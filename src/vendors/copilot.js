@@ -32,7 +32,7 @@
  * @module dsh-compat-adapter/vendors/copilot
  */
 
-import { freezeHookTable, nativeTranslate, unsupported } from './shared.js'
+import { freezeHookTable, builtinBridge, nativeTranslate, unsupported } from './shared.js'
 
 /**
  * Copilot has no official DSH bridge. Declared as `null` so the service and the
@@ -76,11 +76,11 @@ const COPLOT_TRANSLATION_DEGRADATIONS = Object.freeze([
  * not observe-only auditing.
  */
 export const HOOKS = freezeHookTable(VENDOR, {
-  preToolUse: nativeTranslate({
-    point: 'tools/pre-execute',
+  preToolUse: builtinBridge({
+    bridge: 'copilot',
     seams: ['tools/pre-execute'],
     degradations: [
-      ...COPLOT_TRANSLATION_DEGRADATIONS,
+...COPLOT_TRANSLATION_DEGRADATIONS,
       'Matcher is a regular expression anchored as `^(?:PATTERN)$` by Copilot; this adapter passes the pattern through DSH matcher handling, so an unanchored pattern matches more here than it would in Copilot.',
       '`modifiedArgs` (argument rewriting) is NOT honored; only allow/deny/ask are.',
       'Copilot tool names are lowercase (`bash`, `edit`, `create`, `view`, `grep`, `glob`, `web_fetch`, `task`, `ask_user`) and do not match DSH tool names one-to-one, so a matcher written for Copilot may select different tools.',
@@ -88,20 +88,20 @@ export const HOOKS = freezeHookTable(VENDOR, {
     ],
     note: 'Blocking contract for this adapter: stdout {"permissionDecision":"deny","permissionDecisionReason":"…"} with exit code 0. Copilot also accepts exit 2, but this adapter standardizes on the stdout decision so one hook body works across vendors.',
   }),
-  postToolUse: nativeTranslate({
-    point: 'tools/post-execute',
+  postToolUse: builtinBridge({
+    bridge: 'copilot',
     seams: ['tools/post-execute'],
     degradations: [
-      ...COPLOT_TRANSLATION_DEGRADATIONS,
+...COPLOT_TRANSLATION_DEGRADATIONS,
       '`modifiedResult` (result rewriting) is NOT honored; only `additionalContext` is forwarded.',
       'Matcher regex is applied to tool names that differ from Copilot’s tool vocabulary.',
     ],
   }),
-  postToolUseFailure: nativeTranslate({
-    point: 'tools/post-execute',
+  postToolUseFailure: builtinBridge({
+    bridge: 'copilot',
     seams: ['tools/post-execute'],
     degradations: [
-      ...COPLOT_TRANSLATION_DEGRADATIONS,
+...COPLOT_TRANSLATION_DEGRADATIONS,
       'DSH reports successes and failures through one waterfall, so this hook fires only when the result is marked as an error.',
       'The reference event can inject retry guidance; DSH forwards `additionalContext` on the same path as a successful call.',
     ],
@@ -126,67 +126,67 @@ export const HOOKS = freezeHookTable(VENDOR, {
       'Only the model-facing text can be replaced; attachments and non-text blocks are not carried into the rewrite.',
     ],
   }),
-  sessionStart: nativeTranslate({
-    point: 'agent/created',
+  sessionStart: builtinBridge({
+    bridge: 'copilot',
     seams: ['agent/created'],
     degradations: [
-      ...COPLOT_TRANSLATION_DEGRADATIONS,
+...COPLOT_TRANSLATION_DEGRADATIONS,
       'Runs synchronously during agent creation, so it can delay the first turn; Copilot runs session hooks before the session is interactive.',
       'Copilot’s `additionalContext` is injected as a sourced user message; other sessionStart outputs are not consumed.',
       'Copilot prompt-type hooks (`type: "prompt"`) are not supported by this adapter (command hooks only).',
     ],
   }),
-  sessionEnd: nativeTranslate({
-    point: 'agent/disposed',
+  sessionEnd: builtinBridge({
+    bridge: 'copilot',
     seams: ['agent/disposed'],
     degradations: [
-      ...COPLOT_TRANSLATION_DEGRADATIONS,
+...COPLOT_TRANSLATION_DEGRADATIONS,
       'DSH `agent/disposed` fires whenever an Agent leaves the live registry (including reload and teardown), which is broader than Copilot’s end-of-session moment.',
       'Observe-only: Copilot sessionEnd has no decision output, and neither does this mapping.',
     ],
   }),
-  userPromptSubmitted: nativeTranslate({
-    point: 'agent/pre-step',
+  userPromptSubmitted: builtinBridge({
+    bridge: 'copilot',
     seams: ['agent/pre-step'],
     degradations: [
-      ...COPLOT_TRANSLATION_DEGRADATIONS,
+...COPLOT_TRANSLATION_DEGRADATIONS,
       'DSH pre-step receives the already-assembled message batch; the hook cannot rewrite the prompt, only contribute context.',
       'Copilot can block the prompt from this hook; this adapter does not translate that into a DSH rejection.',
     ],
   }),
-  agentStop: nativeTranslate({
-    point: 'agent/turn-stopping',
+  agentStop: builtinBridge({
+    bridge: 'copilot',
     seams: ['agent/turn-stopping'],
     degradations: [
-      ...COPLOT_TRANSLATION_DEGRADATIONS,
+...COPLOT_TRANSLATION_DEGRADATIONS,
       '`decision:"block"` is honored by appending a next-step message during the serial `agent/turn-stopping` dispatch, which the agent loop re-checks before ending the turn. The 8-block runaway guard is reproduced, so behavior matches Copilot.',
       '`stop_hook_active` is always false: DSH does not expose whether this turn was already forced to continue, so a hook that self-limits on that flag cannot do so here.',
       'The forced turn is driven by a synthetic user message carrying the hook reason; Copilot instead reuses its own continuation path, so message provenance differs.',
     ],
   }),
-  subagentStart: nativeTranslate({
-    point: 'subagent/start',
+  subagentStart: builtinBridge({
+    bridge: 'copilot',
     seams: ['subagent/start'],
     degradations: [
-      ...COPLOT_TRANSLATION_DEGRADATIONS,
+...COPLOT_TRANSLATION_DEGRADATIONS,
       'Context is injected by resolving the child through ctx.agents.get(runId) during the start notification; a provider whose child Agent is not yet visible (e.g. a remote provider) receives no context.',
       '`matcher` on agent name is NOT supported: DSH carries no agent-name label on this seam, so the field is absent from the payload and a matcher that filters by name never narrows anything.',
     ],
   }),
-  subagentStop: nativeTranslate({
-    point: 'subagent/end',
+  subagentStop: builtinBridge({
+    bridge: 'copilot',
     seams: ['subagent/end'],
     degradations: [
-      ...COPLOT_TRANSLATION_DEGRADATIONS,
+...COPLOT_TRANSLATION_DEGRADATIONS,
       'Observe-only: the child has already settled, so `decision:"block"` cannot continue it and `modifiedResponse` cannot rewrite its result.',
       '`matcher` on agent name is NOT supported (no agent-name label on this seam).',
     ],
   }),
-  errorOccurred: nativeTranslate({
-    point: 'agent/error',
+  errorOccurred: builtinBridge({
+    bridge: 'copilot',
     seams: ['agent/error'],
     degradations: [
-      ...COPLOT_TRANSLATION_DEGRADATIONS,
+...COPLOT_TRANSLATION_DEGRADATIONS,
       'Observe-only: DSH exposes no verdict channel on its error path, so a hook cannot recover, retry, or alter the failure.',
       'Only turn/step-scoped agent errors are observed; provider transport failures reach `agent/request-error` instead and service-level errors are not events at all.',
       '`errorContext` is reported as "system" unless the failure is known to be model- or tool-related, because DSH does not classify errors the way Copilot does.',

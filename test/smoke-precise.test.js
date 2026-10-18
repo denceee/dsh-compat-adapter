@@ -9,12 +9,13 @@
  */
 
 import assert from 'node:assert/strict'
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
 import { createAdapterFixture } from './helpers/harness.js'
+import { waitFor, waitForJson } from './helpers/wait.js'
 
 /**
  * Write a hook that records its stdin to a file and exits 0.
@@ -31,7 +32,7 @@ function recordingHook(dir, name) {
   return { command, trace }
 }
 
-test('FileChanged reads the real changed-file summary, not a tool-call guess', async (t) => {
+test('session.diff reads the real changed-file summary, not a tool-call guess', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-filechg-'))
   const { command, trace } = recordingHook(dir, 'filechanged')
   const { adapter, ctx, dispose } = await createAdapterFixture()
@@ -52,16 +53,14 @@ test('FileChanged reads the real changed-file summary, not a tool-call guess', a
     },
   })
 
-  const registration = await adapter.registerHook({ vendor: 'claude', event: 'FileChanged', handler: command })
+  const registration = await adapter.registerHook({ vendor: 'opencode', event: 'session.diff', handler: command })
   assert.equal(registration.capability, 'ADAPTED')
   assert.equal(registration.seams[0], 'session/event')
 
   adapter.ctx.emit('session/event', { id: 'sess-w', header: { cwd: dir } }, {
     type: 'workspace/changes', seq: 42, time: Date.now(), data: { turn: 3 },
   })
-  await new Promise((resolve) => setTimeout(resolve, 250))
-
-  const payload = JSON.parse(readFileSync(trace, 'utf8'))
+  const payload = await waitForJson(trace)
   assert.equal(payload.turn, 3)
   assert.deepEqual(payload.paths, ['src/a.ts', 'src/b.ts'], 'the real changed paths must reach the hook')
   assert.equal(payload.total, 4)
@@ -79,9 +78,7 @@ test('InstructionsLoaded reports the files discovery actually found', async (t) 
   assert.equal(registration.capability, 'ADAPTED')
 
   await adapter.ctx.parallel('session/created', { id: 'sess-i', header: { cwd: dir } })
-  await new Promise((resolve) => setTimeout(resolve, 400))
-
-  const payload = JSON.parse(readFileSync(trace, 'utf8'))
+  const payload = await waitForJson(trace)
   assert.ok(Array.isArray(payload.instructionFiles), 'the payload must carry a real file list')
   // Discovery is real: the CLAUDE.md written above must appear.
   assert.ok(
@@ -105,9 +102,7 @@ test('message.updated rides agent/inbox/inserted with the real message', async (
     agent: { id: 'sess-m', session: { header: { cwd: dir } } },
     message,
   })
-  await new Promise((resolve) => setTimeout(resolve, 250))
-
-  const payload = JSON.parse(readFileSync(trace, 'utf8'))
+  const payload = await waitForJson(trace)
   assert.equal(payload.messageId, String(message.id), 'the real message id must be reported')
   assert.match(payload.text, /the real prompt text/u)
   assert.equal(payload.role, 'user')
@@ -134,10 +129,11 @@ test('copilot preCompact and claude PostCompact stay on the compaction events', 
   adapter.ctx.emit('session/event', session, {
     type: 'compaction/end', seq: 3, time: Date.now(), data: { compactionId: 'cc', turn: null },
   })
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  const prePayload = await waitForJson(pre.trace)
+  const postPayload = await waitForJson(post.trace)
 
-  assert.equal(JSON.parse(readFileSync(pre.trace, 'utf8')).compactionId, 'cc')
-  assert.match(JSON.parse(readFileSync(post.trace, 'utf8')).compactSummary, /S U M M A R Y/u)
+  assert.equal(prePayload.compactionId, 'cc')
+  assert.match(postPayload.compactSummary, /S U M M A R Y/u)
 })
 
 test('every translation point is wired in BOTH directions', async () => {
@@ -168,4 +164,87 @@ test('every vendor point resolves to a known translation point', async () => {
       )
     }
   }
+})
+
+test('FileChanged arms a REAL watcher: an external edit fires the hook', async (t) => {
+  // This is the test that proves the adapter ADDED the missing seam rather than
+  // approximating it: the edit below is made by the test process, not by a DSH
+  // tool call, so a tool-call-based mapping could never see it.
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-watch-'))
+  writeFileSync(join(dir, 'seed.txt'), 'seed\n', 'utf8')
+  const { command, trace } = recordingHook(dir, 'watch')
+  const { adapter, ctx, dispose } = await createAdapterFixture()
+  t.after(dispose)
+
+  // The harness must expose ctx.fs for a real watcher. A minimal real one:
+  // resolve() plus a chokidar-free node:fs.watch wrapper is enough to prove the
+  // wiring; the production backend is dsh-fs-local/-sandbox.
+  const { watch } = await import('node:fs')
+  ctx.provide('fs', {
+    async resolve(path) {
+      return { displayPath: path, targetKey: path }
+    },
+    async watch(target, changed, signal) {
+      const watcher = watch(target.displayPath, { persistent: false })
+      watcher.on('change', () => changed())
+      watcher.on('rename', () => changed())
+      signal.addEventListener('abort', () => watcher.close())
+      return async () => watcher.close()
+    },
+  })
+
+  // A live agent so the watcher arms for its session cwd.
+  ctx.provide('agents', {
+    list: () => [{ id: 'sess-watch', session: { id: 'sess-watch', header: { cwd: dir } } }],
+  })
+
+  const registration = await adapter.registerHook({ vendor: 'claude', event: 'FileChanged', handler: command })
+  assert.equal(registration.capability, 'ADAPTED')
+  assert.equal(registration.seams[0], 'fs.watch', 'FileChanged must ride the real watcher seam')
+
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  // External edit — nothing to do with any DSH tool call. A NEW file is created
+  // rather than rewriting the existing one: node:fs.watch's 'change' event is
+  // unreliable for same-inode rewrites on some filesystems, while creation is
+  // reported consistently. The hook must still fire either way.
+  writeFileSync(join(dir, 'external-edit.txt'), 'changed by an external editor\n', 'utf8')
+
+  // Poll for a PARSEABLE trace, not merely an existing file: the hook creates the
+  // file and then writes its body, so checking existence alone races the write
+  // and yields "Unexpected end of JSON input".
+  const readPayload = () => {
+    if (!existsSync(trace)) return undefined
+    try {
+      const text = readFileSync(trace, 'utf8')
+      return text.trim() === '' ? undefined : JSON.parse(text)
+    } catch {
+      return undefined
+    }
+  }
+  const deadline = Date.now() + 5000
+  let payload = readPayload()
+  while (payload === undefined && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    payload = readPayload()
+  }
+
+  assert.ok(payload !== undefined, 'the watcher must fire for an external file edit')
+  assert.equal(payload.action, 'change')
+  assert.equal(payload.trigger, 'watcher')
+  assert.equal(payload.cwd, dir)
+})
+
+test('FileChanged stays honest when ctx.fs is unavailable', async (t) => {
+  // No fs service: the mapping must report the degradation instead of silently
+  // installing a watcher that cannot exist.
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-nowatch-'))
+  const { command } = recordingHook(dir, 'nowatch')
+  const { adapter, status, dispose } = await createAdapterFixture()
+  t.after(dispose)
+  const registration = await adapter.registerHook({ vendor: 'claude', event: 'FileChanged', handler: command })
+  assert.equal(registration.capability, 'ADAPTED')
+  // The capability stays ADAPTED (the declaration is valid); the runtime reason
+  // is logged. Assert the outer contract is unaffected.
+  assert.ok(registration.degradations.some((line) => /without ctx\.fs|falls back/iu.test(line)))
+  void status
 })

@@ -141,7 +141,9 @@ export function renderMatrixMarkdown() {
       const routeText =
         event.route === 'official-bridge'
           ? `official bridge (${event.bridge})`
-          : event.route === 'native-seam'
+          : event.route === 'builtin-bridge'
+            ? `bridge built by this plugin (${event.bridge})`
+            : event.route === 'native-seam'
             ? `native seam, observe-only (\`${event.point}\`)`
             : event.route === 'native-translate'
               ? `native translation (\`${event.point}\`)`

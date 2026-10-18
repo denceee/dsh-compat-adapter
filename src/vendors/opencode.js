@@ -89,27 +89,27 @@ export const HOOKS = freezeHookTable(VENDOR, {
   // Each maps onto the closest honest DSH seam. Most are observe-only; the
   // permission pair reaches the approval waterfall and can really decide.
   'command.executed': nativeTranslate({
-    point: 'session/event',
+    point: 'command/run',
     seams: ['session/event'],
     degradations: [
-      'Approximate: DSH has no slash-command hook seam, so this observes the durable session event stream and cannot identify the command.',
-      'The callback body is not carried: the hook is a command invoked per logged event.',
+      'Fires when DSH commits a `command/run` record, which names the command and its verbatim args; the payload is richer than a bare event stream, but it is still not the OpenCode callback object.',
+      'The callback body is not carried: the hook is a command invoked per logged command run.',
     ],
   }),
   'file.edited': nativeTranslate({
-    point: 'workspace/changes',
-    seams: ['session/event'],
+    point: 'fs/watch',
+    seams: ['fs.watch'],
     degradations: [
-      'Fires once per completed turn with that turn\'s changed-file summary, not per edit event.',
-      'A matcher on a path cannot narrow per file: the payload carries the turn\'s complete path list.',
+      'This adapter arms a real filesystem watcher (ctx.fs.watch), so a genuine file edit fires it rather than a per-turn summary.',
+      'The payload names the watched directory and the action, not the OpenCode editor object.',
     ],
   }),
   'file.watcher.updated': nativeTranslate({
-    point: 'workspace/changes',
-    seams: ['session/event'],
+    point: 'fs/watch',
+    seams: ['fs.watch'],
     degradations: [
-      'DSH has no file-WATCHER event, so watcher updates are approximated by the turn\'s changed-file summary.',
-      'Fires per completed turn, not when the watcher notices a change.',
+      'This adapter supplies the missing watcher seam itself via ctx.fs.watch; OpenCode\'s watcher-updated callback object is not carried.',
+      'Bursts are coalesced with a 250ms debounce.',
     ],
   }),
   'installation.updated': nativeTranslate({

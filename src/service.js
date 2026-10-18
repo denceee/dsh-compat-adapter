@@ -926,6 +926,126 @@ export class CompatAdapter {
       return
     }
 
+    if (translation.point === 'user-questions/request') {
+      // A REAL interception: this waterfall's listener may claim the request by
+      // returning an answer. A hook can therefore answer the question itself
+      // (or hand back an empty answer to decline), which is far closer to the
+      // vendor contract than the status-flip approximation it replaces.
+      this.ctx.on('user-questions/request', async (request, next) => {
+        const questions = Array.isArray(request?.questions) ? request.questions : []
+        const run = await fire(
+          buildTranslationPayload('user-questions/request', {
+            sessionId: String(request?.agent?.id ?? ''),
+            cwd: request?.agent?.session?.header?.cwd,
+            questions,
+            questionCount: questions.length,
+            requestId: request?.wait?.callId === undefined ? undefined : String(request.wait.callId),
+          }),
+          { cwd: request?.agent?.session?.header?.cwd, signal: request?.signal },
+        )
+        if (run === undefined) return next()
+        const answer = elicitationAnswerFrom(run.output, questions)
+        if (answer === undefined) return next()
+        log(`translated ${registration.event} id=${registration.id}: answered ${questions.length} question(s)`)
+        // `ElicitationResult` shares this seam: the answer IS the result, so the
+        // same interception reports it rather than needing a separate event.
+        return answer
+      })
+      return
+    }
+
+    if (translation.point === 'fs/watch') {
+      // A REAL file watcher, not a tool-call approximation. DSH's ctx.fs.watch
+      // observes an actual path through the backend's native watcher, so this
+      // fires when the file changes — including external edits DSH did not make.
+      //
+      // Watchers are armed per agent session cwd, because the watched target is
+      // the session's working directory. A composition without ctx.fs degrades to
+      // the tool-call approximation (recorded by the caller), never a fake.
+      const filesystem = this.ctx.get('fs')
+      if (filesystem === undefined || typeof filesystem.watch !== 'function') {
+        log(`${registration.event}: ctx.fs is absent, so the real watcher cannot arm; the hook stays on its approximate seam`)
+        return
+      }
+      const watchers = new Map()
+      const arm = async (session) => {
+        const cwd = session?.header?.cwd
+        if (typeof cwd !== 'string' || cwd === '') return
+        const key = String(session.id ?? '')
+        if (watchers.has(key)) return
+        try {
+          const target = await filesystem.resolve(cwd)
+          const controller = new AbortController()
+          let pending = null
+          const close = await filesystem.watch(
+            target,
+            (error) => {
+              if (error !== undefined) {
+                log(`${registration.event} watcher error on ${cwd}: ${String(error?.message ?? error)}`)
+                return
+              }
+              // Coalesce bursts: a single logical edit can emit several events.
+              if (pending !== null) clearTimeout(pending)
+              pending = setTimeout(() => {
+                pending = null
+                void fire(
+                  buildTranslationPayload('fs/watch', {
+                    sessionId: key,
+                    cwd,
+                    path: cwd,
+                    action: 'change',
+                  }),
+                  { cwd },
+                )
+              }, 250)
+            },
+            controller.signal,
+          )
+          watchers.set(key, { close, controller, cwd })
+          log(`${registration.event}: armed a real fs watcher on ${cwd}`)
+        } catch (error) {
+          log(`${registration.event}: cannot watch ${cwd}: ${String(error?.message ?? error)}`)
+        }
+      }
+      // Arm for live sessions and for any session created afterwards.
+      for (const agent of this.ctx.get('agents')?.list?.() ?? []) {
+        void arm(agent?.session)
+      }
+      this.ctx.on('session/created', (session) => {
+        void arm(session)
+      })
+      this.ctx.on('agent/disposed', (payload) => {
+        const key = String(payload?.agent?.id ?? '')
+        const entry = watchers.get(key)
+        if (entry === undefined) return
+        watchers.delete(key)
+        clearTimeout?.(entry.pending)
+        entry.controller.abort()
+        void entry.close?.().catch?.(() => {})
+      })
+      return
+    }
+
+    if (translation.point === 'command/run') {
+      // Precise command execution: `command/run` names the command and carries
+      // its verbatim args, so the hook knows which command ran.
+      this.ctx.on('session/event', async (session, event) => {
+        if (event?.type !== 'command/run') return
+        await fire(
+          buildTranslationPayload('command/run', {
+            sessionId: String(session?.id ?? ''),
+            cwd: session?.header?.cwd,
+            commandName: event.data?.name,
+            commandArgs: event.data?.args === undefined ? null : event.data.args,
+            commandId: event.data?.commandId === undefined ? undefined : String(event.data.commandId),
+            sourceKind: event.data?.source?.kind,
+          }),
+          { cwd: session?.header?.cwd },
+        )
+      })
+      return
+    }
+
     if (translation.point === 'workspace/changes') {
       // Precise file-change observation: the durable event names the turn, and
       // the summary service gives the changed paths for that turn. This is a

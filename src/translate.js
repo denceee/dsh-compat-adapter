@@ -152,6 +152,35 @@ export const NATIVE_TRANSLATIONS = Object.freeze({
   // Precise message-arrival observation. `agent/inbox/inserted` carries the real
   // UserMessage that entered an agent's inbox, which is a genuine message event
   // rather than a whole-session-stream approximation.
+  // Real command execution. `command/run` carries the command name and the
+  // verbatim args, so a command-executed hook gets the actual command rather
+  // than an unidentified session event.
+  // REAL filesystem watching. DSH exposes `ctx.fs.watch(target, changed, signal)`
+  // which wraps the backend's native watcher (chokidar / node:fs.watch), so a
+  // file-change hook can fire on an ACTUAL change instead of after a tool call.
+  // This is the adapter ADDING the missing seam rather than approximating it.
+  // REAL elicitation interception. `user-questions/request` is a waterfall whose
+  // listener may claim the request by returning an answer, so a hook can really
+  // answer (or refuse to answer) a structured question instead of observing
+  // status flips. This is the adapter supplying the missing elicitation seam.
+  'user-questions/request': Object.freeze({
+    event: 'Elicitation',
+    seam: 'user-questions/request',
+    mode: 'waterfall',
+    produces: 'AskUserQuestionAnswer',
+  }),
+  'fs/watch': Object.freeze({
+    event: 'FileChanged',
+    seam: 'fs.watch',
+    mode: 'watcher',
+    produces: 'none',
+  }),
+  'command/run': Object.freeze({
+    event: 'command.executed',
+    seam: 'session/event',
+    mode: 'emit',
+    produces: 'none',
+  }),
   'workspace/changes': Object.freeze({
     event: 'FileChanged',
     seam: 'session/event',
@@ -255,6 +284,31 @@ export function buildTranslationPayload(point, facts) {
         // Real discovered file list, not an approximation.
         instructionFiles: Array.isArray(facts.paths) ? facts.paths : [],
         projectRoot: facts.projectRoot ?? null,
+      }
+    case 'user-questions/request':
+      return {
+        ...base,
+        // The vendor carries an elicitation request from an MCP server; DSH's
+        // seam carries structured questions for the user.
+        questions: Array.isArray(facts.questions) ? facts.questions : [],
+        questionCount: facts.questionCount ?? 0,
+        requestId: facts.requestId ?? null,
+      }
+    case 'fs/watch':
+      return {
+        ...base,
+        // The watcher reports a path and an action; the vendor sees one change.
+        path: facts.path ?? '',
+        action: facts.action ?? 'change',
+        trigger: 'watcher',
+      }
+    case 'command/run':
+      return {
+        ...base,
+        commandName: facts.commandName ?? '',
+        commandArgs: facts.commandArgs ?? null,
+        commandId: facts.commandId ?? null,
+        source: facts.sourceKind ?? 'user',
       }
     case 'workspace/changes':
       return {
@@ -575,6 +629,50 @@ export function transformedPromptFrom(output) {
   } catch {
     return undefined
   }
+}
+
+/**
+ * Build a DSH `AskUserQuestionAnswer` from a hook's stdout.
+ *
+ * The vendor's elicitation reply carries the user's answers. DSH's answer shape
+ * is `{ answers: [{ id, selected, custom? }] }`, so each vendor answer is mapped
+ * onto the question it names; an answer naming no known question is ignored
+ * rather than fabricating one.
+ *
+ * @param {import('@deepseek-ai/dsh-hook-protocol').HookOutput} output - decoded output.
+ * @param {ReadonlyArray<object>} questions - the questions being asked.
+ * @returns {{answers: Array<{id: string, selected: string[], custom?: string}>}|undefined} the answer, or undefined to delegate.
+ */
+export function elicitationAnswerFrom(output, questions) {
+  const raw = typeof output.stdout === 'string' ? output.stdout.trim() : ''
+  if (!raw.startsWith('{')) return undefined
+  let parsed
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+  const candidates = Array.isArray(parsed.answers)
+    ? parsed.answers
+    : Array.isArray(parsed.selected)
+      ? [{ id: questions[0]?.id, selected: parsed.selected, custom: parsed.custom }]
+      : undefined
+  if (candidates === undefined) return undefined
+  const known = new Set(questions.map((question) => String(question?.id ?? '')))
+  const answers = []
+  for (const item of candidates) {
+    if (item === null || typeof item !== 'object') continue
+    const id = String(item.id ?? '')
+    // Skip an answer whose id names no asked question: inventing one would make
+    // the caller believe the user answered something they never saw.
+    if (known.size > 0 && !known.has(id)) continue
+    const selected = Array.isArray(item.selected) ? item.selected.map((value) => String(value)) : []
+    const custom = typeof item.custom === 'string' && item.custom !== '' ? item.custom : undefined
+    if (selected.length === 0 && custom === undefined) continue
+    answers.push({ id, selected, ...(custom === undefined ? {} : { custom }) })
+  }
+  return answers.length === 0 ? undefined : { answers }
 }
 
 /**

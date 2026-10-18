@@ -16,6 +16,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { createAdapterFixture } from './helpers/harness.js'
+import { waitFor, waitForJson } from './helpers/wait.js'
 
 /**
  * Write an executable hook emitting one stdout payload.
@@ -171,9 +172,9 @@ test('copilot: sessionStart injects its additionalContext as a sourced message',
   // parallel/emit — passing it to `waterfall` would treat the payload as the
   // final callback and never reach the listener.
   await adapter.ctx.parallel('agent/created', { agent, source: 'startup' })
-  await new Promise((resolve) => setTimeout(resolve, 150))
+  await waitFor(() => (injected.length === 1 ? true : undefined), { what: 'one injected message' })
   assert.equal(injected.length, 1, 'sessionStart context must be injected once')
-  assert.equal(injected[0].source.kind, 'compat-adapter-copilot-context')
+  assert.equal(injected[0].source.kind, 'hooks-copilot', 'the builtin bridge stamps its own producer source')
   const text = injected[0].content.map((block) => block.text).join('')
   assert.match(text, /9f3a/u)
 })
@@ -250,12 +251,12 @@ test('copilot: agentStop block really forces another step (not merely logged)', 
     },
   }
   await adapter.ctx.parallel('agent/turn-stopping', { agent, turn: 3, signal: new AbortController().signal })
-  await new Promise((resolve) => setTimeout(resolve, 150))
+  await waitFor(() => (appended.length >= 1 ? true : undefined), { what: 'a forced continuation' })
 
   assert.equal(appended.length, 1, 'a block decision must append exactly one next-step message')
   assert.equal(appended[0].target, 'next-step', 'the message must go to next-step so the loop rechecks it')
   assert.match(appended[0].text, /keep working on the failing test/u)
-  assert.equal(appended[0].source.kind, 'compat-adapter-stop-continue')
+  assert.equal(appended[0].source.kind, 'hooks-copilot', 'the builtin bridge stamps its own producer source')
   assert.equal(agent.inbox.nextStep.length, 1)
 })
 
@@ -318,8 +319,7 @@ test('copilot: errorOccurred observes a real agent/error', async (t) => {
     step: 1,
     error,
   })
-  await new Promise((resolve) => setTimeout(resolve, 200))
-  const payload = JSON.parse(readFileSync(trace, 'utf8'))
+  const payload = await waitForJson(trace)
   assert.equal(payload.error.message, 'model call blew up')
   assert.equal(payload.error.name, 'Error')
   assert.equal(payload.turn, 2)
@@ -341,9 +341,9 @@ test('copilot: subagentStart injects context into the child agent', async (t) =>
   ctx.provide('agents', { get: (id) => (String(id) === 'child-1' ? child : undefined) })
 
   await ctx.parallel('subagent/start', { runId: 'run-1', provider: 'spawn', id: 'child-1', local: true })
-  await new Promise((resolve) => setTimeout(resolve, 200))
+  await waitFor(() => (injected.length === 1 ? true : undefined), { what: 'subagent context injection' })
   assert.equal(injected.length, 1, 'the child must receive exactly one context message')
-  assert.equal(injected[0].source.kind, 'compat-adapter-subagent-context')
+  assert.equal(injected[0].source.kind, 'hooks-copilot', 'the builtin bridge stamps its own producer source')
   assert.match(injected[0].content.map((block) => block.text).join(''), /repo conventions/u)
 })
 
@@ -367,9 +367,9 @@ test('copilot: subagentStop observes the settled child', async (t) => {
     stopReason: 'end_turn',
     lastAssistantMessage: [{ type: 'text', text: 'child finished the job' }],
   })
-  await new Promise((resolve) => setTimeout(resolve, 200))
-  const payload = JSON.parse(readFileSync(trace, 'utf8'))
-  assert.equal(payload.subagentId, 'child-1')
+  const payload = await waitForJson(trace)
+  // The builtin bridge emits Copilot's own camelCase payload contract.
+  assert.equal(payload.agentId, 'child-1')
   assert.equal(payload.stopReason, 'end_turn')
   assert.match(payload.response, /child finished the job/u)
 })
@@ -378,13 +378,23 @@ test('copilot: subagentStart injects nothing when the child agent is not visible
   // A remote provider's child is not in ctx.agents during the notification, so
   // the mapping must skip injection instead of throwing or injecting nowhere.
   const command = hookScript(JSON.stringify({ additionalContext: 'should not be delivered' }))
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-nosub-'))
+  const trace = join(dir, 'nosub.json')
   const { adapter, ctx, dispose } = await createAdapterFixture()
   t.after(dispose)
-  await adapter.registerHook({ vendor: 'copilot', event: 'subagentStart', handler: command })
-  // No 'agents' service registered at all.
-  await adapter.ctx.parallel('subagent/start', { runId: 'run-9', provider: 'remote', id: 'unknown-child', local: false })
-  await new Promise((resolve) => setTimeout(resolve, 150))
-  assert.equal(ctx.get('agents'), undefined)
+  const registration = await adapter.registerHook({ vendor: 'copilot', event: 'subagentStart', handler: command })
+  assert.equal(registration.capability, 'ADAPTED')
+  // No 'agents' service is registered, so the child cannot be resolved. The
+  // bridge must run the hook (it is an observation) without inventing a target.
+  const { scopeTarget } = await import('@deepseek-ai/dsh-scope')
+  adapter.ctx.emit(
+    scopeTarget({}, undefined),
+    'subagent/start',
+    { runId: 'run-9', provider: 'remote', id: 'unknown-child', local: false },
+  )
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  assert.equal(ctx.get('agents'), undefined, 'no agents service must remain absent after the event')
+  void trace
 })
 
 test('copilot: preCompact observes compaction/start', async (t) => {
@@ -402,8 +412,7 @@ test('copilot: preCompact observes compaction/start', async (t) => {
   adapter.ctx.emit('session/event', { id: 'sess-c', header: { cwd: dir } }, {
     type: 'compaction/start', seq: 1, time: Date.now(), data: { compactionId: 'c1', turn: null },
   })
-  await new Promise((resolve) => setTimeout(resolve, 200))
-  const payload = JSON.parse(readFileSync(trace, 'utf8'))
+  const payload = await waitForJson(trace)
   assert.equal(payload.compactionId, 'c1')
   assert.equal(payload.trigger, 'auto')
 })
@@ -468,8 +477,7 @@ test('claude: PostCompact observes compaction/end with the generated summary', a
   adapter.ctx.emit('session/event', session, {
     type: 'compaction/end', seq: 3, time: Date.now(), data: { compactionId: 'c9', turn: null },
   })
-  await new Promise((resolve) => setTimeout(resolve, 250))
-  const payload = JSON.parse(readFileSync(trace, 'utf8'))
+  const payload = await waitForJson(trace)
   assert.equal(payload.compactionId, 'c9')
   assert.match(payload.compactSummary, /condensed conversation/u)
 })

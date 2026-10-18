@@ -269,12 +269,13 @@ export const HOOKS = freezeHookTable(VENDOR, {
     ],
   }),
   FileChanged: nativeTranslate({
-    point: 'workspace/changes',
-    seams: ['session/event'],
+    point: 'fs/watch',
+    seams: ['fs.watch'],
     degradations: [
-      'Fires once per completed top-level turn with that turn\'s changed-file summary, not once per file as the reference event does.',
-      'External edits that no turn recorded are still not observed; only changes DSH itself summarized.',
-      'A `matcher` on the watched path cannot narrow per file: the payload carries the turn\'s complete path list.',
+      'This adapter ARMS a real filesystem watcher (ctx.fs.watch) on the session working directory, so external edits fire it — not only DSH-made changes.',
+      'One watcher covers the session cwd with depth 0, matching the reference tool\'s project-directory watch; a change deep inside a subtree may not be reported by every backend.',
+      'Bursts are coalesced with a 250ms debounce, so several rapid edits report as one change.',
+      'A composition without ctx.fs falls back to the turn-summary approximation, and the reason is logged.',
     ],
   }),
   WorktreeCreate: nativeTranslate({

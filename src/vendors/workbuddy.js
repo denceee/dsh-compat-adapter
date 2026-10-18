@@ -174,11 +174,11 @@ export const HOOKS = freezeHookTable(VENDOR, {
     ],
   }),
   FileChanged: nativeTranslate({
-    point: 'workspace/changes',
-    seams: ['session/event'],
+    point: 'fs/watch',
+    seams: ['fs.watch'],
     degradations: [
-      'Fires once per completed turn with that turn\'s changed-file summary, not once per file.',
-      'External edits that no turn recorded are not observed.',
+      'This adapter arms a real filesystem watcher (ctx.fs.watch) on the session working directory, so external edits fire it.',
+      'Bursts are coalesced with a 250ms debounce; the payload names the watched directory, not the individual file.',
     ],
   }),
   CwdChanged: nativeTranslate({

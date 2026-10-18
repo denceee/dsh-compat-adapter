@@ -73,6 +73,32 @@ export function nativeSeam(options) {
 }
 
 /**
+ * Build one mapping that rides a bridge THIS PLUGIN ships.
+ *
+ * Used for a vendor DSH has no official bridge for. Unlike
+ * {@link bridged} (which reuses a shipped DSH package), the bridge is part of
+ * this plugin and follows the same contract (`name`/`inject`/`Config`/`apply`),
+ * reusing the protocol library for matching, execution and decoding.
+ *
+ * @param {object} options - mapping options.
+ * @param {string} options.bridge - the builtin bridge key.
+ * @param {string[]} options.seams - DSH seams the bridge's listeners use.
+ * @param {string[]} options.degradations - semantic losses of this dialect.
+ * @param {string} [options.note] - extra author-facing guidance.
+ * @returns {Readonly<HookMapping>} frozen mapping.
+ */
+export function builtinBridge(options) {
+  return Object.freeze({
+    capability: CAPABILITY.ADAPTED,
+    route: 'builtin-bridge',
+    bridge: options.bridge,
+    seams: Object.freeze([...options.seams]),
+    degradations: Object.freeze([...options.degradations]),
+    ...(options.note === undefined ? {} : { note: options.note }),
+  })
+}
+
+/**
  * Build one native mapping the adapter TRANSLATES into a real interception.
  *
  * Unlike {@link nativeSeam}, the hook's decision reaches DSH: a deny becomes a

@@ -67,9 +67,12 @@ test('every ADAPTED entry lists degradations and names its seams', () => {
       if (mapping.capability !== CAPABILITY.ADAPTED) continue
       assert.ok(mapping.degradations.length > 0, `${vendor} ${event} claims ADAPTED without degradations`)
       assert.ok(mapping.seams.length > 0, `${vendor} ${event} claims ADAPTED without a DSH seam`)
-      assert.ok(['official-bridge', 'native-seam', 'native-translate'].includes(mapping.route), `${vendor} ${event} has an unknown route`)
-      if (mapping.route === 'official-bridge') {
-        assert.ok(['claude', 'codex'].includes(mapping.bridge), `${vendor} ${event} names an unknown bridge`)
+      assert.ok(
+        ['official-bridge', 'builtin-bridge', 'native-seam', 'native-translate'].includes(mapping.route),
+        `${vendor} ${event} has an unknown route`,
+      )
+      if (mapping.route === 'official-bridge' || mapping.route === 'builtin-bridge') {
+        assert.ok(['claude', 'codex', 'copilot'].includes(mapping.bridge), `${vendor} ${event} names an unknown bridge`)
       }
     }
   }

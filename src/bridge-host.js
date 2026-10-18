@@ -36,17 +36,34 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } f
 import { join } from 'node:path'
 import { CompatAdapterError, ERROR_CODES } from './errors.js'
 
-/** Bridge key → package specifier + the config filename stem. */
+/**
+ * Bridge key → how to reach it plus the config filename stem.
+ *
+ * `kind` matters: an `official` bridge is a shipped DSH package this adapter
+ * REUSES, while a `builtin` bridge is one THIS PLUGIN ships to fill a gap DSH
+ * left open (GitHub Copilot). The distinction is recorded so the matrix and the
+ * README never imply a builtin bridge is an official one.
+ */
 const BRIDGES = Object.freeze({
   claude: Object.freeze({
     key: 'claude',
+    kind: 'official',
     packageName: '@deepseek-ai/dsh-hooks-claude-code',
     configStem: 'hooks-claude-code',
   }),
   codex: Object.freeze({
     key: 'codex',
+    kind: 'official',
     packageName: '@deepseek-ai/dsh-hooks-codex',
     configStem: 'hooks-codex',
+  }),
+  copilot: Object.freeze({
+    key: 'copilot',
+    kind: 'builtin',
+    // Resolved relative to this module: the bridge ships with the plugin, so it
+    // is always present when the adapter is (unlike an optional official bridge).
+    modulePath: new URL('./bridges/copilot.js', import.meta.url).href,
+    configStem: 'hooks-copilot',
   }),
 })
 
@@ -95,9 +112,39 @@ export function renderBridgeConfig(hooks) {
 }
 
 /**
- * Own the generated config files and the mounted bridge fibers.
+ * Render Copilot's OWN config format.
  *
- * One instance per adapter service; all state is released by {@link dispose}.
+ * Copilot differs from the Claude/Codex shape in three ways this renderer must
+ * respect, because the builtin bridge parses Copilot's documented format rather
+ * than a synthesized subset:
+ *
+ * - a top-level `version: 1` envelope;
+ * - events in lowerCamelCase as Copilot declares them;
+ * - command entries are FLAT (`{type, command, matcher, timeoutSec}`), not
+ *   wrapped in a `hooks` array.
+ *
+ * @param {Array<{event: string, matcher?: string, handler: string, timeoutSec?: number}>} hooks - declarations.
+ * @returns {{version: number, hooks: Record<string, Array<object>>}} the Copilot config object.
+ */
+export function renderCopilotConfig(hooks) {
+  /** @type {Record<string, Array<object>>} */
+  const events = {}
+  for (const hook of hooks) {
+    const entries = (events[hook.event] ??= [])
+    entries.push({
+      type: 'command',
+      // `command` is Copilot's cross-platform fallback, honored on every platform.
+      command: hook.handler,
+      ...(hook.matcher === undefined ? {} : { matcher: hook.matcher }),
+      ...(hook.timeoutSec === undefined ? {} : { timeoutSec: hook.timeoutSec }),
+    })
+  }
+  return { version: 1, hooks: events }
+}
+
+/**
+ * Own the generated config files and the mounted bridge fibers. One instance per
+ * adapter service; all state is released by {@link dispose}.
  */
 export class BridgeHost {
   /**
@@ -344,7 +391,10 @@ export class BridgeHost {
     mkdirSync(dir, { recursive: true, mode: 0o700 })
     this.syncSeq += 1
     const configPath = join(dir, `${descriptor.configStem}.${this.instanceId}.${this.syncSeq}.json`)
-    writeFileSync(configPath, `${JSON.stringify(renderBridgeConfig(hooks), null, 2)}\n`, { mode: 0o600 })
+    // A builtin bridge parses ITS vendor's documented format; official bridges
+    // share the Claude/Codex matcher-group shape.
+    const document = descriptor.kind === 'builtin' ? renderCopilotConfig(hooks) : renderBridgeConfig(hooks)
+    writeFileSync(configPath, `${JSON.stringify(document, null, 2)}\n`, { mode: 0o600 })
     this.generatedFiles.add(configPath)
     return configPath
   }
@@ -358,9 +408,21 @@ export class BridgeHost {
    * @returns {Promise<object>} the bridge module namespace.
    */
   async #loadBridge(descriptor) {
+    // A builtin bridge ships with this plugin, so it resolves relative to this
+    // module and cannot be missing. An official bridge is a DSH package that may
+    // legitimately be absent, which is a loud typed failure.
+    const target = descriptor.kind === 'builtin' ? descriptor.modulePath : descriptor.packageName
     try {
-      return await import(descriptor.packageName)
+      return await import(target)
     } catch (error) {
+      if (descriptor.kind === 'builtin') {
+        throw new CompatAdapterError(
+          ERROR_CODES.MOUNT_FAILED,
+          `dsh-compat-adapter: the plugin's own ${descriptor.key} bridge failed to load (${String(error?.message ?? error)}). ` +
+            'This is an installation defect, not a missing dependency: reinstall the bundle.',
+          { modulePath: target },
+        )
+      }
       throw new CompatAdapterError(
         ERROR_CODES.BRIDGE_UNAVAILABLE,
         `dsh-compat-adapter: the official bridge ${descriptor.packageName} is not resolvable from this profile (${String(error?.message ?? error)}). ` +

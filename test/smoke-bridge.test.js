@@ -25,6 +25,7 @@ import test from 'node:test'
 
 import { permissionDecisionOutput } from '../src/vendors/shared.js'
 import { createAdapterFixture } from './helpers/harness.js'
+import { waitForJson } from './helpers/wait.js'
 
 /**
  * Write an executable hook script and return its path.
@@ -263,8 +264,7 @@ test('smoke: a Claude ConfigChange hook observes a settings update', async (t) =
   assert.equal(registration.seams[0], 'settings/document-updated')
 
   await adapter.ctx.parallel('settings/document-updated', 'ui-settings-general', 7)
-  await new Promise((resolve) => setTimeout(resolve, 200))
-  const payload = JSON.parse(readFileSync(trace, 'utf8'))
+  const payload = await waitForJson(trace)
   assert.equal(payload.namespace, 'ui-settings-general')
   assert.equal(payload.revision, 7)
   assert.equal(payload.filePath, null, 'DSH reports namespaces, not files; filePath must stay null')
