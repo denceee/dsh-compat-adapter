@@ -95,6 +95,29 @@ export const NATIVE_TRANSLATIONS = Object.freeze({
     mode: 'registry',
     produces: 'environment variables',
   }),
+  // Post-compaction observation. `compaction/end` is the durable settle event;
+  // the summary itself lives on `compaction/summary`, so both are consulted.
+  'compaction/end': Object.freeze({
+    event: 'PostCompact',
+    seam: 'session/event',
+    mode: 'emit',
+    produces: 'none',
+  }),
+  // Pre-compaction observation (Copilot preCompact has no decision either).
+  'compaction/start': Object.freeze({
+    event: 'preCompact',
+    seam: 'session/event',
+    mode: 'emit',
+    produces: 'none',
+  }),
+  // Prompt rewriting. DSH agent/pre-step returns the admitted messages, so a
+  // transformed prompt can really replace what the model receives.
+  'agent/pre-step/transform': Object.freeze({
+    event: 'userPromptTransformed',
+    seam: 'agent/pre-step',
+    mode: 'waterfall',
+    produces: 'PreStepDecision',
+  }),
   // Approval audit observation. `approval/decided` is a durable log-only event;
   // a denied decision is the honest source for a "permission denied" hook.
   'session/event': Object.freeze({
@@ -196,6 +219,30 @@ export function buildTranslationPayload(point, facts) {
       return { ...base, source: facts.source ?? 'startup' }
     case 'agent/disposed':
       return { ...base }
+    case 'compaction/end':
+      return {
+        ...base,
+        trigger: facts.trigger ?? 'auto',
+        // Copilot's preCompact carries the trigger; PostCompact adds the summary.
+        compactSummary: facts.summary ?? null,
+        compactionId: facts.compactionId ?? null,
+        ...(facts.error === undefined ? {} : { error: facts.error }),
+      }
+    case 'compaction/start':
+      return {
+        ...base,
+        trigger: facts.trigger ?? 'auto',
+        compactionId: facts.compactionId ?? null,
+        compactSummary: null,
+      }
+    case 'agent/pre-step/transform':
+      return {
+        ...base,
+        prompt: facts.prompt ?? '',
+        transformedPrompt: facts.prompt ?? '',
+        turn: facts.turn ?? null,
+        step: facts.step ?? null,
+      }
     case 'shell/env':
       return {
         ...base,
@@ -457,6 +504,29 @@ export function permissionVerdictFrom(output) {
   if (output.decision === 'deny' || output.decision === 'block') return 'rejected'
   if (output.decision === 'allow') return 'allowed-once'
   return undefined
+}
+
+/**
+ * Read the rewritten model-facing prompt from a `userPromptTransformed` hook.
+ *
+ * Copilot's contract is mutation-only: `modifiedTransformedPrompt` replaces what
+ * the model receives (the timeline still shows the original). DSH's agent/pre-step
+ * can replace the admitted message list, which is the same lever.
+ *
+ * @param {import('@deepseek-ai/dsh-hook-protocol').HookOutput} output - decoded output.
+ * @returns {string|undefined} the replacement text, when the hook supplied one.
+ */
+export function transformedPromptFrom(output) {
+  const raw = typeof output.stdout === 'string' ? output.stdout.trim() : ''
+  if (!raw.startsWith('{')) return undefined
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+    const value = parsed.modifiedTransformedPrompt
+    return typeof value === 'string' && value !== '' ? value : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /**

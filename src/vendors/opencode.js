@@ -84,6 +84,160 @@ export const HOOKS = freezeHookTable(VENDOR, {
       'Decisions map onto DSH ApprovalOutcome: allow→`allowed-once`, deny→`rejected`; there is no "always" grant.',
     ],
   }),
+
+  // ── OpenCode event-bus names (28 in the official list) ─────────────────
+  // Each maps onto the closest honest DSH seam. Most are observe-only; the
+  // permission pair reaches the approval waterfall and can really decide.
+  'command.executed': nativeTranslate({
+    point: 'session/event',
+    seams: ['session/event'],
+    degradations: [
+      'Approximate: DSH has no slash-command hook seam, so this observes the durable session event stream and cannot identify the command.',
+      'The callback body is not carried: the hook is a command invoked per logged event.',
+    ],
+  }),
+  'file.edited': nativeTranslate({
+    point: 'tools/post-execute',
+    seams: ['tools/post-execute'],
+    degradations: [
+      'Approximate: fires after a tool call that could have written files, not when a file is actually edited.',
+      'External edits outside DSH tool calls do not fire it.',
+    ],
+  }),
+  'file.watcher.updated': nativeTranslate({
+    point: 'tools/post-execute',
+    seams: ['tools/post-execute'],
+    degradations: [
+      'Approximate: DSH has no file-watch contract, so this observes tool completion rather than watcher events.',
+      'A matcher on a path cannot narrow: the payload carries the tool call, not a watched path.',
+    ],
+  }),
+  'installation.updated': nativeTranslate({
+    point: 'settings/document-updated',
+    seams: ['settings/document-updated'],
+    degradations: [
+      'Approximate: DSH reports settings namespaces reaching a new revision, not dependency installations.',
+      'Observe-only: the change already committed.',
+    ],
+  }),
+  'lsp.client.diagnostics': nativeTranslate({
+    point: 'tools/post-execute',
+    seams: ['tools/post-execute'],
+    degradations: [
+      'Approximate: DSH has no LSP diagnostics seam, so this observes tool completion instead.',
+      'No diagnostic payload is available to the hook.',
+    ],
+  }),
+  'lsp.updated': nativeTranslate({
+    point: 'tools/post-execute',
+    seams: ['tools/post-execute'],
+    degradations: ['Approximate: no DSH LSP seam exists; this fires on tool completion.'],
+  }),
+  'message.part.removed': nativeTranslate({
+    point: 'session/event',
+    seams: ['session/event'],
+    degradations: ['Approximate: observes the durable session event stream; DSH publishes no part-level removal hook.'],
+  }),
+  'message.part.updated': nativeTranslate({
+    point: 'session/event',
+    seams: ['session/event'],
+    degradations: ['Approximate: observes the durable session event stream rather than part updates.'],
+  }),
+  'message.removed': nativeTranslate({
+    point: 'session/event',
+    seams: ['session/event'],
+    degradations: ['Approximate: DSH message removal is a surface operation with no hook point.'],
+  }),
+  'message.updated': nativeTranslate({
+    point: 'session/event',
+    seams: ['session/event'],
+    degradations: ['Approximate: observes the durable event stream; each logged message event fires it.'],
+  }),
+  'permission.asked': nativeTranslate({
+    point: 'approval/request',
+    seams: ['approval/request'],
+    degradations: [
+      'This one is a REAL interception: the hook can answer the pending permission.',
+      'Decisions map onto DSH ApprovalOutcome: allow→`allowed-once`, deny→`rejected`; there is no "always" grant.',
+    ],
+  }),
+  'permission.replied': nativeTranslate({
+    point: 'session/event',
+    seams: ['session/event'],
+    degradations: ['Observe-only: driven by the durable `approval/decided` audit event after the decision committed.'],
+  }),
+  'server.connected': nativeTranslate({
+    point: 'session/created',
+    seams: ['session/created'],
+    degradations: ['Approximate: DSH announces session creation, not a client server connection.'],
+  }),
+  'session.created': nativeTranslate({
+    point: 'session/created',
+    seams: ['session/created'],
+    degradations: ['Observe-only: DSH announces the created session but exposes no veto here.'],
+  }),
+  'session.compacted': nativeTranslate({
+    point: 'compaction/end',
+    seams: ['session/event'],
+    degradations: ['Observe-only: the compaction already completed; the summary comes from the durable `compaction/summary` event.'],
+  }),
+  'session.deleted': nativeTranslate({
+    point: 'agent/disposed',
+    seams: ['agent/disposed'],
+    degradations: ['Approximate: DSH fires when an Agent leaves the registry (also on reload/teardown), broader than a deletion.'],
+  }),
+  'session.diff': nativeTranslate({
+    point: 'tools/post-execute',
+    seams: ['tools/post-execute'],
+    degradations: ['Approximate: DSH records workspace changes per session rather than publishing a diff event; this observes tool completion.'],
+  }),
+  'session.error': nativeTranslate({
+    point: 'agent/error',
+    seams: ['agent/error'],
+    degradations: [
+      'Observe-only: DSH exposes no verdict channel on its error path.',
+      'Only turn/step agent errors are observed; provider transport failures reach agent/request-error instead.',
+    ],
+  }),
+  'session.idle': nativeTranslate({
+    point: 'agent/status',
+    seams: ['agent/status'],
+    degradations: [
+      'Observe-only: DSH status flips are a consequence of driver activity; a hook cannot make an agent idle.',
+      'Fires for any agent entering `idle`.',
+    ],
+  }),
+  'session.status': nativeTranslate({
+    point: 'agent/status',
+    seams: ['agent/status'],
+    degradations: ['Observe-only: reports DSH status flips rather than OpenCode’s richer status payload.'],
+  }),
+  'session.updated': nativeTranslate({
+    point: 'session/event',
+    seams: ['session/event'],
+    degradations: ['Approximate: observes the durable event stream rather than a session-metadata update.'],
+  }),
+  'tui.prompt.append': nativeTranslate({
+    point: 'agent/pre-step',
+    seams: ['agent/pre-step'],
+    degradations: [
+      'Approximate: DSH has no TUI seam; this observes the assembled prompt at the step boundary.',
+      'The hook cannot write into the TUI input.',
+    ],
+  }),
+  'tui.command.execute': nativeTranslate({
+    point: 'session/event',
+    seams: ['session/event'],
+    degradations: ['Approximate: no DSH TUI command seam; observes the durable event stream.'],
+  }),
+  'tui.toast.show': nativeTranslate({
+    point: 'agent/status',
+    seams: ['agent/status'],
+    degradations: [
+      'Approximate: DSH notifications are client-surface events with no Host hook seam, so this observes agent status.',
+      'The hook cannot display or suppress a toast.',
+    ],
+  }),
 })
 
 /** Every event name this adapter knows about for this vendor. */

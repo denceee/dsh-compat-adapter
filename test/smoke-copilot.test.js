@@ -386,3 +386,90 @@ test('copilot: subagentStart injects nothing when the child agent is not visible
   await new Promise((resolve) => setTimeout(resolve, 150))
   assert.equal(ctx.get('agents'), undefined)
 })
+
+test('copilot: preCompact observes compaction/start', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-pc-'))
+  const trace = join(dir, 'pre.log')
+  const command = join(dir, 'pre.sh')
+  writeFileSync(command, `#!/usr/bin/env bash\ncat > ${trace}\nprintf '%s' '{}'\nexit 0\n`, 'utf8')
+  chmodSync(command, 0o755)
+  const { adapter, dispose } = await createAdapterFixture()
+  t.after(dispose)
+  const registration = await adapter.registerHook({ vendor: 'copilot', event: 'preCompact', handler: command })
+  assert.equal(registration.capability, 'ADAPTED')
+  assert.equal(registration.seams[0], 'session/event')
+
+  adapter.ctx.emit('session/event', { id: 'sess-c', header: { cwd: dir } }, {
+    type: 'compaction/start', seq: 1, time: Date.now(), data: { compactionId: 'c1', turn: null },
+  })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const payload = JSON.parse(readFileSync(trace, 'utf8'))
+  assert.equal(payload.compactionId, 'c1')
+  assert.equal(payload.trigger, 'auto')
+})
+
+test('copilot: userPromptTransformed rewrites what the model receives', async (t) => {
+  const command = hookScript(JSON.stringify({ modifiedTransformedPrompt: 'REWRITTEN: be brief' }))
+  const { adapter, dispose } = await createAdapterFixture()
+  t.after(dispose)
+  const registration = await adapter.registerHook({ vendor: 'copilot', event: 'userPromptTransformed', handler: command })
+  assert.equal(registration.capability, 'ADAPTED')
+  assert.equal(registration.seams[0], 'agent/pre-step')
+
+  const { createUserMessage } = await import('@deepseek-ai/dsh-llm')
+  const original = createUserMessage({ content: [{ type: 'text', text: 'write me a novel' }], source: { kind: 'user' } })
+  const decision = await adapter.ctx.waterfall(
+    'agent/pre-step',
+    { agent: { id: 's', session: { header: { cwd: '/tmp' } } }, messages: [original], turn: 1, step: 1, signal: new AbortController().signal },
+    async () => ({ kind: 'enter', messages: [original] }),
+  )
+  assert.equal(decision.kind, 'enter')
+  assert.equal(decision.messages.length, 1, 'the batch is replaced, not appended to')
+  const text = decision.messages[0].content.map((block) => block.text).join('')
+  assert.match(text, /REWRITTEN: be brief/u)
+  assert.equal(decision.messages[0].source.kind, 'compat-adapter-transformed-prompt')
+})
+
+test('copilot: userPromptTransformed leaves the batch alone when the hook returns nothing', async (t) => {
+  const command = hookScript('{}')
+  const { adapter, dispose } = await createAdapterFixture()
+  t.after(dispose)
+  await adapter.registerHook({ vendor: 'copilot', event: 'userPromptTransformed', handler: command })
+  const { createUserMessage } = await import('@deepseek-ai/dsh-llm')
+  const original = createUserMessage({ content: [{ type: 'text', text: 'untouched' }], source: { kind: 'user' } })
+  const decision = await adapter.ctx.waterfall(
+    'agent/pre-step',
+    { agent: { id: 's', session: { header: { cwd: '/tmp' } } }, messages: [original], turn: 1, step: 1, signal: new AbortController().signal },
+    async () => ({ kind: 'enter', messages: [original] }),
+  )
+  assert.equal(decision.messages.length, 1, 'no rewrite must not change the message count')
+  assert.equal(decision.messages[0].id, original.id, 'no rewrite must keep the original message identity')
+})
+
+test('claude: PostCompact observes compaction/end with the generated summary', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-postc-'))
+  const trace = join(dir, 'post.log')
+  const command = join(dir, 'post.sh')
+  writeFileSync(command, `#!/usr/bin/env bash\ncat > ${trace}\nprintf '%s' '{}'\nexit 0\n`, 'utf8')
+  chmodSync(command, 0o755)
+  const { adapter, dispose } = await createAdapterFixture()
+  t.after(dispose)
+  const registration = await adapter.registerHook({ vendor: 'claude', event: 'PostCompact', handler: command })
+  assert.equal(registration.capability, 'ADAPTED')
+  assert.equal(registration.seams[0], 'session/event')
+
+  const session = { id: 'sess-p', header: { cwd: dir } }
+  // Summary arrives first on its own durable event…
+  adapter.ctx.emit('session/event', session, {
+    type: 'compaction/summary', seq: 2, time: Date.now(),
+    data: { compactionId: 'c9', summary: [{ type: 'text', text: 'the condensed conversation' }], shadowedSeqs: [], shadowedTokenCount: 5, provider: 'p', model: 'm', rawOutput: [] },
+  })
+  // …then the end marker carries the hook invocation.
+  adapter.ctx.emit('session/event', session, {
+    type: 'compaction/end', seq: 3, time: Date.now(), data: { compactionId: 'c9', turn: null },
+  })
+  await new Promise((resolve) => setTimeout(resolve, 250))
+  const payload = JSON.parse(readFileSync(trace, 'utf8'))
+  assert.equal(payload.compactionId, 'c9')
+  assert.match(payload.compactSummary, /condensed conversation/u)
+})

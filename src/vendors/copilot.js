@@ -106,6 +106,26 @@ export const HOOKS = freezeHookTable(VENDOR, {
       'The reference event can inject retry guidance; DSH forwards `additionalContext` on the same path as a successful call.',
     ],
   }),
+  preCompact: nativeTranslate({
+    point: 'compaction/start',
+    seams: ['session/event'],
+    degradations: [
+      ...COPLOT_TRANSLATION_DEGRADATIONS,
+      'Observe-only (Copilot also treats it as notification-only): DSH compaction is a service call, so the hook cannot veto it.',
+      '`trigger` is reported as "auto"; DSH does not expose whether compaction was manual or automatic at this seam.',
+      'A `matcher` on the trigger therefore cannot separate manual from automatic compactions.',
+    ],
+  }),
+  userPromptTransformed: nativeTranslate({
+    point: 'agent/pre-step/transform',
+    seams: ['agent/pre-step'],
+    degradations: [
+      ...COPLOT_TRANSLATION_DEGRADATIONS,
+      'The replacement is applied by returning a new admitted message list from DSH agent/pre-step; the durable user message in the session log keeps its original text, so history and timeline differ from Copilot (which persists the rewrite).',
+      'Copilot runs this for the primary message and every preceding message of a batched submission; this adapter rewrites the assembled batch once.',
+      'Only the model-facing text can be replaced; attachments and non-text blocks are not carried into the rewrite.',
+    ],
+  }),
   sessionStart: nativeTranslate({
     point: 'agent/created',
     seams: ['agent/created'],

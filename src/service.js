@@ -34,6 +34,7 @@ import {
   preToolDecisionFrom,
   runTranslatedHook,
   stopDecisionFrom,
+  transformedPromptFrom,
 } from './translate.js'
 import {
   readRuleAsset,
@@ -868,6 +869,77 @@ export class CompatAdapter {
           }),
           { cwd: session?.header?.cwd },
         )
+      })
+      return
+    }
+
+    if (translation.point === 'compaction/end' || translation.point === 'compaction/start') {
+      // Compaction observations. DSH logs `compaction/summary` (the generated
+      // summary) and then `compaction/end`; preCompact fires on the start marker.
+      const summaries = new Map()
+      this.ctx.on('session/event', async (session, event) => {
+        const key = String(session?.id ?? '')
+        if (event?.type === 'compaction/summary') {
+          const text = Array.isArray(event.data?.summary)
+            ? event.data.summary.map((block) => block?.text ?? '').join('')
+            : ''
+          summaries.set(key, text)
+          return
+        }
+        const wanted = translation.point === 'compaction/start' ? 'compaction/start' : 'compaction/end'
+        if (event?.type !== wanted) return
+        const summary = translation.point === 'compaction/end' ? summaries.get(key) : undefined
+        if (translation.point === 'compaction/end') summaries.delete(key)
+        await fire(
+          buildTranslationPayload(translation.point, {
+            sessionId: key,
+            cwd: session?.header?.cwd,
+            trigger: 'auto',
+            compactionId: event.data?.compactionId === undefined ? undefined : String(event.data.compactionId),
+            summary,
+            ...(event.data?.error === undefined ? {} : { error: event.data.error }),
+          }),
+          { cwd: session?.header?.cwd },
+        )
+      })
+      return
+    }
+
+    if (translation.point === 'agent/pre-step/transform') {
+      // Mutation-only prompt rewriting: the hook returns a replacement for what
+      // the model receives. DSH's pre-step decision carries the admitted message
+      // list, so the replacement is applied there.
+      this.ctx.on('agent/pre-step', async (payload, next) => {
+        const prompt = payload.messages
+          ?.map((message) => message.content?.map((block) => block.text ?? '').join('') ?? '')
+          .join('\n') ?? ''
+        const run = await fire(
+          buildTranslationPayload('agent/pre-step/transform', {
+            sessionId: String(payload.agent?.id ?? ''),
+            cwd: payload.agent?.session?.header?.cwd,
+            prompt,
+            turn: payload.turn,
+            step: payload.step,
+          }),
+          { cwd: payload.agent?.session?.header?.cwd, signal: payload.signal },
+        )
+        const downstream = await next()
+        if (run === undefined || downstream.kind !== 'enter') return downstream
+        const replacement = transformedPromptFrom(run.output)
+        if (replacement === undefined) return downstream
+        let message
+        try {
+          const createUserMessage = await loadPeerExport('@deepseek-ai/dsh-llm', 'createUserMessage')
+          message = createUserMessage({
+            content: [{ type: 'text', text: replacement }],
+            source: { kind: 'compat-adapter-transformed-prompt', vendor: registration.vendor },
+          })
+        } catch (error) {
+          log(`cannot apply ${registration.event} rewrite: ${String(error?.message ?? error)}`)
+          return downstream
+        }
+        log(`translated ${registration.event} id=${registration.id}: replaced the model-facing prompt`)
+        return { ...downstream, messages: [message] }
       })
       return
     }

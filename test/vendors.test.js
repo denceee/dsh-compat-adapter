@@ -167,12 +167,18 @@ test('WorkBuddy: desktop hooks have no public API, and the CC-compatible subset 
 
 test('OpenCode: every callback name maps to a DSH seam, and the body is NOT carried', () => {
   assert.equal(opencode.BRIDGE_PACKAGE, null)
-  // `permission` is a policy table, not a callback, so it has its own wording.
-  const policyEvents = new Set(['permission'])
+  // Three flavours, each with its own honest wording:
+  //  - callback hooks (`tool.execute.*`, `event`, `shell.env`) carry a TS body
+  //  - `permission` is a policy TABLE, re-authored as a script
+  //  - event-bus names (`session.*`, `file.*`, `tui.*`, …) are observations
+  const policyEvents = new Set(['permission'])  // the bare policy TABLE, not permission.* events
+  let callbackLike = 0
+  let busLike = 0
   for (const event of opencode.KNOWN_EVENTS) {
     const mapping = opencode.HOOKS[event]
     assert.equal(mapping.capability, CAPABILITY.ADAPTED, `${event} should be executable`)
     assert.ok(mapping.degradations.length > 0, `${event} must state its losses`)
+    assert.ok(mapping.seams.length > 0, `${event} must name a DSH seam`)
     if (policyEvents.has(event)) {
       assert.ok(
         mapping.degradations.some((line) => /policy table|must be expressed as a script/iu.test(line)),
@@ -180,13 +186,31 @@ test('OpenCode: every callback name maps to a DSH seam, and the body is NOT carr
       )
       continue
     }
-    // The honest limit: OpenCode callbacks are TS closures. Every callback row must
-    // say the body is re-authored, or someone will assume it was carried.
+    if (/^(session|file|command|installation|lsp|message|server|tui|permission)\./u.test(event)) {
+      busLike += 1
+      // `permission.asked` is the one bus event with a real decision channel.
+      if (event === 'permission.asked') {
+        assert.equal(mapping.seams[0], 'approval/request')
+        assert.ok(
+          mapping.degradations.some((line) => /REAL interception|allowed-once/iu.test(line)),
+          'permission.asked must declare that it really decides',
+        )
+        continue
+      }
+      assert.ok(
+        mapping.degradations.some((line) => /approximate|observe-only|durable/iu.test(line)),
+        `${event} is an event-bus observation and must say so`,
+      )
+      continue
+    }
+    callbackLike += 1
     assert.ok(
       mapping.degradations.some((line) => /callback body is not carried|re-authored|THROWING/iu.test(line)),
       `${event} must state that the TypeScript callback body is not carried`,
     )
   }
+  assert.ok(callbackLike >= 3, 'the callback-shaped hooks must still be declared')
+  assert.ok(busLike >= 20, 'the event-bus names must be covered too')
   assert.match(opencode.HOOKS['tool.execute.before'].degradations.join(' '), /THROWING|re-authored/iu)
   assert.match(opencode.RUNTIME_NOTE, /rewritten|out of scope/iu)
   assert.equal(opencode.RULES.capability, CAPABILITY.CARRY)

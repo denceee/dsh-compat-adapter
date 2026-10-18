@@ -109,6 +109,15 @@ export const HOOKS = freezeHookTable(VENDOR, {
 
   // ── Events with no bridge coverage but an honest native-seam translation ──
 
+  PostCompact: nativeTranslate({
+    point: 'compaction/end',
+    seams: ['session/event'],
+    degradations: [
+      'Observe-only: the compaction already completed, so a hook can react but never change the result.',
+      'The summary is taken from the preceding durable `compaction/summary` event; the hook sees the same text, not a live object.',
+      '`trigger` is reported as "auto" because DSH does not distinguish a manual /compact from automatic pressure at this seam.',
+    ],
+  }),
   PreCompact: nativeSeam({
     point: 'compaction/start',
     seams: ['session/event'],
