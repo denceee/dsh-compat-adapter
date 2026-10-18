@@ -1,0 +1,26 @@
+# Dependencies (this package has no runtime dependencies; peers come from DSH)
+node_modules/
+.pnpm-store/
+
+# Generated bridge configs. The adapter writes these under the Harness home
+# (`$DSH_HOME` / `~/.dsh/compat-adapter/`), never into the package — but a
+# stray run with DSH_HOME pointed at the repo must not commit them.
+compat-adapter/
+*.lock.tmp
+
+# Distribution archives (built on demand, never committed)
+*.zip
+*.tar.gz
+
+# Local verification artifacts
+*.log
+.verify-*/
+coverage/
+.nyc_output/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
